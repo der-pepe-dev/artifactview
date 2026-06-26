@@ -137,4 +137,21 @@ public sealed class SignatureCarverTests
         var found = SignatureCarver.Carve(data);
         await Assert.That(found).IsEmpty();
     }
+
+    [Test]
+    public async Task CarveFile_reads_and_carves_a_file()
+    {
+        var jpeg = MakeJpeg();
+        var data = Concat([0x00, 0x00], jpeg);
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllBytes(path, data);
+            var found = SignatureCarver.CarveFile(path);
+            await Assert.That(found.Count).IsEqualTo(1);
+            await Assert.That(found[0].Offset).IsEqualTo(2L);
+            await Assert.That(found[0].Length).IsEqualTo((long)jpeg.Length);
+        }
+        finally { File.Delete(path); }
+    }
 }
