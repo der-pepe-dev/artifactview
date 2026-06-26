@@ -100,8 +100,15 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
             return;
         }
 
+        // Deleted NTFS file: best-effort recovery of its bytes from the $MFT record.
+        if (row is not null && row.PresenceState == "Deleted" && row.DeletedMftRecordNumber >= 0)
+        {
+            _ = Task.Run(() => LoadDeletedFileAsync(row, token), token);
+            return;
+        }
+
         // Live file inside a disk image: read its content out of the image via DiscUtils.
-        if (row is not null && !string.IsNullOrEmpty(row.DiskImagePath))
+        if (row is not null && !string.IsNullOrEmpty(row.DiskImageInternalPath))
         {
             _ = Task.Run(() => LoadDiskImageFileAsync(row, token), token);
             return;
@@ -296,6 +303,61 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
             {
                 Source    = null;
                 LoadError = "Disk-image file — could not be decoded.";
+            });
+        }
+    }
+
+    // Best-effort recovery of a DELETED NTFS file's bytes from its $MFT record. The
+    // recovered clusters may have been reallocated since deletion, so a decode failure is
+    // expected and reported plainly rather than as a hard error.
+    private void LoadDeletedFileAsync(MediaEntityRow row, CancellationToken token)
+    {
+        byte[]? payload = null;
+        try
+        {
+            payload = DiskImagePartitionReader.ReadDeletedFileBytes(
+                row.DiskImagePath, row.DiskImagePartitionIndex, row.DeletedMftRecordNumber);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to recover deleted file: {Name}", row.DisplayName);
+        }
+
+        if (token.IsCancellationRequested) return;
+
+        if (payload is null || payload.Length == 0)
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                Source    = null;
+                LoadError = "Deleted file — recovered bytes unavailable (compressed or not recoverable).";
+            });
+            return;
+        }
+
+        try
+        {
+            using var ms = new MemoryStream(payload);
+            var frame = ImageDecoder.Decode(ms);
+
+            if (token.IsCancellationRequested) return;
+
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (token.IsCancellationRequested) return;
+                Source         = frame;
+                IsGhostPreview = true; // recovered content is best-effort, flag it like a ghost preview
+                LoadError      = null;
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to decode recovered deleted file: {Name}", row.DisplayName);
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                Source    = null;
+                LoadError = "Deleted file — recovered bytes could not be decoded (clusters may be overwritten).";
             });
         }
     }

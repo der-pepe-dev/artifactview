@@ -8,8 +8,10 @@ Durable, prioritized task list. Active work goes in `tasks/<task-name>.md`, not 
 
 ## Medium priority
 
-- View disk-image DELETED file bytes — needs NTFS MFT data-run reconstruction (live-file
-  viewing already done via DiscUtils OpenFile).
+- Deleted FAT/exFAT file viewing — DiscUtils doesn't enumerate deleted FAT entries and has
+  NO exFAT support, so both need raw directory parsing (FAT: 0xE5 entries, recover assuming
+  contiguous since FAT chain is cleared; exFAT: custom boot/FAT/dir parser). (NTFS deleted
+  recovery is done.)
 - Carving: more formats (GIF/BMP/TIFF/MP4/HEIF) in `SignatureCarver`.
 - Carving: streaming scan for multi-GB images (v1 caps in-memory at 512 MiB).
 - Carved/disk-image grid thumbnails (ThumbnailViewModel) — currently only the main viewer
