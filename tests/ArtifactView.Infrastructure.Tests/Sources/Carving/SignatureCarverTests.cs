@@ -98,6 +98,30 @@ public sealed class SignatureCarverTests
         await Assert.That(found[0].Length).IsEqualTo((long)jpeg.Length);
     }
 
+    // A segment (here a DHT) appears AFTER the first SOS and its payload contains the
+    // bytes FF D9. A naive scanner treats the payload as entropy and stops at that FF D9,
+    // truncating the carve; the segment must be skipped via its length to reach the real EOI.
+    private static byte[] MakeJpegWithSegmentAfterScan() =>
+    [
+        0xFF, 0xD8,                                     // SOI
+        0xFF, 0xDA, 0x00, 0x02,                         // SOS #1 (no payload)
+        0x11,                                           // entropy
+        0xFF, 0xC4, 0x00, 0x05, 0xFF, 0xD9, 0xAA,       // DHT len=5, payload contains FF D9
+        0xFF, 0xDA, 0x00, 0x02,                         // SOS #2 (progressive)
+        0x22,                                           // entropy
+        0xFF, 0xD9                                      // real EOI
+    ];
+
+    [Test]
+    public async Task Jpeg_carve_skips_segment_payload_after_scan()
+    {
+        var jpeg = MakeJpegWithSegmentAfterScan();
+        var found = SignatureCarver.Carve(jpeg);
+
+        await Assert.That(found.Count).IsEqualTo(1);
+        await Assert.That(found[0].Length).IsEqualTo((long)jpeg.Length);
+    }
+
     [Test]
     public async Task Returns_empty_for_no_signatures()
     {

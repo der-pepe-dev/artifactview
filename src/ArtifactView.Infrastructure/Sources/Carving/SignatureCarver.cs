@@ -64,43 +64,30 @@ public static class SignatureCarver
         long limit = Math.Min(data.Length, soi + MaxArtifactBytes);
         int p = soi + 2; // past SOI (FF D8)
 
-        // Marker segments: FF <marker> [2-byte big-endian length] [payload].
+        // Single walk over the whole structure:
+        //  - A non-0xFF byte is entropy-coded scan data -> advance one byte.
+        //  - FF 00 (stuffing), FF D0..D7 (restart), FF 01 (TEM) are part of the scan.
+        //  - FF D9 is the EOI -> done.
+        //  - Any other FF <marker> is a length-prefixed segment (APPn, DQT, DHT, SOF,
+        //    SOS, COM, ...): skip it via its 2-byte length, then continue. This keeps
+        //    embedded EXIF thumbnails (inside APP1) out of the scan and correctly
+        //    handles progressive/multi-scan JPEGs where more segments follow an SOS.
         while (p + 1 < limit)
         {
-            if (data[p] != 0xFF) return -1;       // not aligned on a marker — give up
+            if (data[p] != 0xFF) { p++; continue; }     // entropy byte
+
             byte marker = data[p + 1];
-
-            // Padding 0xFF bytes before a marker are allowed.
-            if (marker == 0xFF) { p++; continue; }
-
-            // Standalone markers (no length): RSTn (D0–D7), TEM (01).
-            if ((marker >= 0xD0 && marker <= 0xD7) || marker == 0x01) { p += 2; continue; }
-
-            // Start of Scan — entropy-coded data follows; scan for EOI.
-            if (marker == 0xDA)
+            if (marker == 0xFF) { p++; continue; }       // fill byte
+            if (marker == 0x00 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7))
             {
-                if (p + 4 > limit) return -1;
-                int sosLen = (data[p + 2] << 8) | data[p + 3];
-                int scan = p + 2 + sosLen;        // past the SOS header
-                while (scan + 1 < limit)
-                {
-                    if (data[scan] == 0xFF)
-                    {
-                        byte b = data[scan + 1];
-                        if (b == 0xD9) return scan + 2;                 // EOI — done
-                        if (b == 0x00 || (b >= 0xD0 && b <= 0xD7)) { scan += 2; continue; } // stuffing / restart
-                        scan += 2; continue;       // other marker inside the scan
-                    }
-                    scan++;
-                }
-                return -1;
+                p += 2; continue;                        // stuffing / TEM / restart
             }
+            if (marker == 0xD9) return p + 2;            // EOI
 
-            // Any other marker: read its 2-byte length and skip the segment.
             if (p + 4 > limit) return -1;
             int segLen = (data[p + 2] << 8) | data[p + 3];
-            if (segLen < 2) return -1;             // malformed length
-            p += 2 + segLen;
+            if (segLen < 2) return -1;                   // malformed length
+            p += 2 + segLen;                             // skip marker + segment
         }
 
         return -1;
