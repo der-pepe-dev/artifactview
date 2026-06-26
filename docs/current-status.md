@@ -24,6 +24,10 @@ artifact source is deferred. See [[roadmap]] for phase detail.
 
 <!-- Append dated notes here, newest first: -->
 <!-- - YYYY-MM-DD: ... -->
+- 2026-06-27: Viewer can now open disk-image LIVE files and carved artifacts.
+  `DiskImagePartitionReader.ReadFileBytes` (DiscUtils OpenFile) + `MediaEntityRow`
+  DiskImage*/Carved* byte-source fields + `ViewerViewModel` branches +
+  `ImageDecoder.Decode(Stream)`. Deleted disk-image files (MFT data runs) still not viewable.
 - 2026-06-26: Carved artifact source v1 implemented — `SignatureCarver` (JPEG+PNG signature
   carving, segment/chunk-walked end detection) + `CarvedArtifactSourceProvider`/`Session`
   (carved-range `OpenReadAsync`). In-memory scan; streaming for multi-GB images and more

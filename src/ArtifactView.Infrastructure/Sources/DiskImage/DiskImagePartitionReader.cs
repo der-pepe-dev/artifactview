@@ -68,6 +68,80 @@ public static class DiskImagePartitionReader
         return results;
     }
 
+    // Reads the full content of a single LIVE file from the image, given its partition,
+    // internal path, and filesystem (as reported by ReadAllMediaFiles). Returns null on
+    // any failure or when the file is larger than maxBytes. Deleted files are not
+    // recoverable here (no data-run reconstruction).
+    public static byte[]? ReadFileBytes(
+        string imagePath, int partitionIndex, string internalPath, string filesystem,
+        long maxBytes = 512L * 1024 * 1024)
+    {
+        try
+        {
+            using var imageStream = new System.IO.FileStream(
+                imagePath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
+            using var disk = new Disk(imageStream, Ownership.None);
+
+            var partitions = TryGetPartitions(disk);
+            if (partitions.Count == 0)
+            {
+                imageStream.Seek(0, System.IO.SeekOrigin.Begin);
+                return ReadFileFromPartition(imageStream, internalPath, filesystem, maxBytes);
+            }
+
+            if (partitionIndex < 0 || partitionIndex >= partitions.Count)
+                return null;
+
+            using var partStream = partitions[partitionIndex].Open();
+            return ReadFileFromPartition(partStream, internalPath, filesystem, maxBytes);
+        }
+        catch { return null; }
+    }
+
+    private static byte[]? ReadFileFromPartition(
+        System.IO.Stream partStream, string internalPath, string filesystem, long maxBytes)
+    {
+        try
+        {
+            if (string.Equals(filesystem, "NTFS", StringComparison.OrdinalIgnoreCase))
+            {
+                partStream.Seek(0, System.IO.SeekOrigin.Begin);
+                if (!NtfsFileSystem.Detect(partStream)) return null;
+                partStream.Seek(0, System.IO.SeekOrigin.Begin);
+                using var ntfs = new NtfsFileSystem(partStream);
+                return ReadFile(ntfs, internalPath, maxBytes);
+            }
+
+            if (string.Equals(filesystem, "FAT", StringComparison.OrdinalIgnoreCase))
+            {
+                partStream.Seek(0, System.IO.SeekOrigin.Begin);
+                if (!FatFileSystem.Detect(partStream)) return null;
+                partStream.Seek(0, System.IO.SeekOrigin.Begin);
+                using var fat = new FatFileSystem(partStream);
+                return ReadFile(fat, internalPath, maxBytes);
+            }
+
+            return null;
+        }
+        catch { return null; }
+    }
+
+    private static byte[]? ReadFile(DiscFileSystem fs, string path, long maxBytes)
+    {
+        if (!fs.FileExists(path)) return null;
+        var len = fs.GetFileLength(path);
+        if (len <= 0 || len > maxBytes) return null;
+
+        using var s = fs.OpenFile(path, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+        var buf = new byte[(int)len];
+        // Damaged/truncated filesystem: if fewer bytes are available than the recorded
+        // length, return null rather than a zero-padded buffer — never surface bytes that
+        // weren't actually in the image (forensic integrity).
+        if (ReadFully(s, buf, 0, buf.Length) != buf.Length)
+            return null;
+        return buf;
+    }
+
     private static IReadOnlyList<PartitionInfo> TryGetPartitions(Disk disk)
     {
         // Try MBR first, then GPT.

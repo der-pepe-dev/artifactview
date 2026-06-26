@@ -7,6 +7,7 @@ using System.Windows.Media.Imaging;
 using ArtifactView.App.Commands;
 using ArtifactView.App.Viewing;
 using ArtifactView.Core.Models;
+using ArtifactView.Infrastructure.Sources.DiskImage;
 using ArtifactView.Infrastructure.ThumbCache;
 using Microsoft.Extensions.Logging;
 
@@ -96,6 +97,13 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
         if (row is not null && !string.IsNullOrEmpty(row.CarvedImagePath) && row.CarvedLength > 0)
         {
             _ = Task.Run(() => LoadCarvedAsync(row, token), token);
+            return;
+        }
+
+        // Live file inside a disk image: read its content out of the image via DiscUtils.
+        if (row is not null && !string.IsNullOrEmpty(row.DiskImagePath))
+        {
+            _ = Task.Run(() => LoadDiskImageFileAsync(row, token), token);
             return;
         }
 
@@ -233,6 +241,61 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
             {
                 Source    = null;
                 LoadError = "Carved artifact — could not be decoded.";
+            });
+        }
+    }
+
+    // Loads a live file that lives inside a raw disk image by reading its content out of
+    // the image via DiscUtils. Deleted disk-image files have no DiskImagePath and fall
+    // through to the ghost path instead.
+    private void LoadDiskImageFileAsync(MediaEntityRow row, CancellationToken token)
+    {
+        byte[]? payload = null;
+        try
+        {
+            payload = DiskImagePartitionReader.ReadFileBytes(
+                row.DiskImagePath, row.DiskImagePartitionIndex,
+                row.DiskImageInternalPath, row.DiskImageFilesystem);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read disk-image file: {Name}", row.DisplayName);
+        }
+
+        if (token.IsCancellationRequested) return;
+
+        if (payload is null || payload.Length == 0)
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                Source    = null;
+                LoadError = "Disk-image file — content could not be read.";
+            });
+            return;
+        }
+
+        try
+        {
+            using var ms = new MemoryStream(payload);
+            var frame = ImageDecoder.Decode(ms);
+
+            if (token.IsCancellationRequested) return;
+
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (token.IsCancellationRequested) return;
+                Source    = frame;
+                LoadError = null;
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to decode disk-image file: {Name}", row.DisplayName);
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                Source    = null;
+                LoadError = "Disk-image file — could not be decoded.";
             });
         }
     }

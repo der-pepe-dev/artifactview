@@ -36,6 +36,11 @@ public sealed class DiskImageOpenWorkflow(ILogger<DiskImageOpenWorkflow> logger)
                 FileSizeBytes     = entry.SizeBytes,
                 PresenceState     = isGhost ? "Deleted" : "Disk Image",
                 PrimarySourceType = $"{entry.Filesystem} (partition {entry.PartitionIndex + 1})",
+                // Live files are readable from the image; deleted files are not (no data runs).
+                DiskImagePath           = isGhost ? string.Empty : imagePath,
+                DiskImagePartitionIndex = entry.PartitionIndex,
+                DiskImageInternalPath   = isGhost ? string.Empty : entry.LogicalPath,
+                DiskImageFilesystem     = entry.Filesystem,
                 ResolutionText    = string.Empty,
                 PreferredDateText = dateText,
                 CameraModel       = string.Empty,

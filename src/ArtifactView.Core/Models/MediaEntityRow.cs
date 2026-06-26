@@ -92,6 +92,13 @@ public sealed class MediaEntityRow : INotifyPropertyChanged
     public long   CarvedOffset    { get; init; }
     public long   CarvedLength    { get; init; }
 
+    // For LIVE files inside a raw disk image (no host-filesystem path). The viewer reads
+    // the file content out of the image via DiscUtils using these coordinates.
+    public string DiskImagePath          { get; init; } = string.Empty;
+    public int    DiskImagePartitionIndex { get; init; }
+    public string DiskImageInternalPath { get; init; } = string.Empty;
+    public string DiskImageFilesystem   { get; init; } = string.Empty;
+
     public string PresenceState
     {
         get => _presenceState;

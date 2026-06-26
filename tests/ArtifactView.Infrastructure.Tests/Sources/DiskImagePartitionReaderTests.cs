@@ -184,4 +184,32 @@ public sealed class DiskImagePartitionReaderTests : IDisposable
 
         await Assert.That(results).All(r => !(r.IsDeleted));
     }
+
+    // ── ReadFileBytes (live file content) ──────────────────────────────────────
+
+    [Test]
+    public async Task ReadFileBytes_returns_live_fat_file_content()
+    {
+        var content = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x12, 0x34, 0x56, 0x78, 0xFF, 0xD9 };
+        var path = CreateFatImage(fat => Write(fat, "photo.jpg", content));
+
+        // Use the path exactly as enumeration reports it (FAT 8.3 casing).
+        var entry = DiskImagePartitionReader.ReadAllMediaFiles(path).Single(e => !e.IsDeleted);
+
+        var bytes = DiskImagePartitionReader.ReadFileBytes(
+            path, entry.PartitionIndex, entry.LogicalPath, entry.Filesystem);
+
+        await Assert.That(bytes).IsNotNull();
+        await Assert.That(bytes!).IsEquivalentTo(content);
+    }
+
+    [Test]
+    public async Task ReadFileBytes_returns_null_for_missing_file()
+    {
+        var path = CreateFatImage(fat => Write(fat, "photo.jpg", [0xFF, 0xD8]));
+
+        var bytes = DiskImagePartitionReader.ReadFileBytes(path, 0, @"\NOPE.JPG", "FAT");
+
+        await Assert.That(bytes).IsNull();
+    }
 }
