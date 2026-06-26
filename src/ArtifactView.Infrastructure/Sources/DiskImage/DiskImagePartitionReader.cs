@@ -134,7 +134,11 @@ public static class DiskImagePartitionReader
 
         using var s = fs.OpenFile(path, System.IO.FileMode.Open, System.IO.FileAccess.Read);
         var buf = new byte[(int)len];
-        ReadFully(s, buf, 0, buf.Length);
+        // Damaged/truncated filesystem: if fewer bytes are available than the recorded
+        // length, return null rather than a zero-padded buffer — never surface bytes that
+        // weren't actually in the image (forensic integrity).
+        if (ReadFully(s, buf, 0, buf.Length) != buf.Length)
+            return null;
         return buf;
     }
 
