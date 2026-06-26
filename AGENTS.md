@@ -4,7 +4,9 @@
 
 - Stack: C#/.NET 10 (net10.0-windows, WPF)
 - Environment: WSL2
-- Build: `dotnet build ArtifactView.sln` | Test: `dotnet test ArtifactView.sln`
+- Build: `dotnet build ArtifactView.sln` | Test: `dotnet test --solution ArtifactView.sln`
+  (tests use TUnit on Microsoft.Testing.Platform; MTP mode is enabled via `global.json`,
+  so `dotnet test` requires `--solution`/`--project`. On WSL add `-p:EnableWindowsTargeting=true`.)
 
 ## Startup
 
