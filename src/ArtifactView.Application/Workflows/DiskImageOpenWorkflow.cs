@@ -1,4 +1,5 @@
 using ArtifactView.Core.Models;
+using ArtifactView.Infrastructure.Sources.Carving;
 using ArtifactView.Infrastructure.Sources.DiskImage;
 using Microsoft.Extensions.Logging;
 
@@ -37,6 +38,35 @@ public sealed class DiskImageOpenWorkflow(ILogger<DiskImageOpenWorkflow> logger)
                 PrimarySourceType = $"{entry.Filesystem} (partition {entry.PartitionIndex + 1})",
                 ResolutionText    = string.Empty,
                 PreferredDateText = dateText,
+                CameraModel       = string.Empty,
+                FindingsText      = string.Empty
+            };
+
+            await Task.Yield();
+        }
+
+        // Carving pass: recover signature-carved artifacts (JPEG/PNG) from the raw image,
+        // including content with no live filesystem entry. Surfaced as "Carved" rows.
+        await using var carve = new CarvedArtifactSourceSession(imagePath);
+        await foreach (var c in carve.EnumerateItemsAsync(cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var cext = c.Extension ?? Path.GetExtension(c.LogicalPath);
+
+            yield return new MediaEntityRow
+            {
+                DisplayName       = c.DisplayName,
+                LogicalPath       = string.Empty, // recoverable via the carved source session, not a path
+                IsDirectory       = false,
+                SortOrder         = 3,
+                ItemIcon          = IconForExtension(cext ?? string.Empty),
+                FileSizeText      = FormatSize(c.Size ?? 0),
+                FileSizeBytes     = c.Size ?? 0,
+                PresenceState     = "Carved",
+                PrimarySourceType = "Carved (signature)",
+                ResolutionText    = string.Empty,
+                PreferredDateText = string.Empty,
                 CameraModel       = string.Empty,
                 FindingsText      = string.Empty
             };

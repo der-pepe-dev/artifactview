@@ -109,7 +109,8 @@ Includes:
 - app DB correlation ✓ — AppDbCorrelator with WhatsApp/Telegram/Signal readers; enrichment pass in ShellViewModel
 - disk image source ✓ — DiskImagePartitionReader (MBR/GPT, NTFS+FAT, deleted via raw MFT); DiskImageOpenWorkflow
 - deleted record source ✓ — NTFS deleted files via $MFT parsing (MFT IN_USE=0); LogicalPath = \[DELETED]\<name>
-- carved artifact source — deferred (LogicalPath = string.Empty placeholder; no carving yet)
+- carved artifact source — v1 ✓ — SignatureCarver (JPEG+PNG) + CarvedArtifactSourceProvider/Session
+  with carved-range OpenReadAsync; in-memory scan (streaming for multi-GB images + more formats deferred)
 - unified source-type display in the grid ✓ — PrimarySourceType column shows filesystem + partition
 
 ## Phase 8 - Advanced Integrity and Salvage
