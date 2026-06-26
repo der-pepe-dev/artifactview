@@ -1,6 +1,6 @@
 using ArtifactView.Application.ViewModels;
 using ArtifactView.Core.Models;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Application.Tests.ViewModels;
 
@@ -26,28 +26,28 @@ public sealed class FindingRowViewModelTests
         };
     }
 
-    [Fact]
-    public void Forwards_finding_properties()
+    [Test]
+    public async Task Forwards_finding_properties()
     {
         var finding = MakeFinding(interpretation: "likely tampered", provenance: "core.analyzer.foo");
         var vm = new FindingRowViewModel(finding);
 
-        Assert.Equal("Test",             vm.Category);
-        Assert.Equal("Some observation", vm.Observation);
-        Assert.Equal("likely tampered",  vm.Interpretation);
-        Assert.Equal("core.analyzer.foo", vm.Provenance);
-        Assert.Same(finding, vm.Finding);
+        await Assert.That(vm.Category).IsEqualTo("Test");
+        await Assert.That(vm.Observation).IsEqualTo("Some observation");
+        await Assert.That(vm.Interpretation).IsEqualTo("likely tampered");
+        await Assert.That(vm.Provenance).IsEqualTo("core.analyzer.foo");
+        await Assert.That(vm.Finding).IsSameReferenceAs(finding);
     }
 
-    [Fact]
-    public void IsExpanded_defaults_to_false()
+    [Test]
+    public async Task IsExpanded_defaults_to_false()
     {
         var vm = new FindingRowViewModel(MakeFinding());
-        Assert.False(vm.IsExpanded);
+        await Assert.That(vm.IsExpanded).IsFalse();
     }
 
-    [Fact]
-    public void IsExpanded_raises_PropertyChanged()
+    [Test]
+    public async Task IsExpanded_raises_PropertyChanged()
     {
         var vm = new FindingRowViewModel(MakeFinding());
         string? changedProp = null;
@@ -55,80 +55,80 @@ public sealed class FindingRowViewModelTests
 
         vm.IsExpanded = true;
 
-        Assert.Equal(nameof(vm.IsExpanded), changedProp);
+        await Assert.That(changedProp).IsEqualTo(nameof(vm.IsExpanded));
     }
 
-    [Fact]
-    public void HasDetails_false_when_nothing_extra()
+    [Test]
+    public async Task HasDetails_false_when_nothing_extra()
     {
         // Unknown confidence, no factors, no provenance.
         var vm = new FindingRowViewModel(MakeFinding());
-        Assert.False(vm.HasDetails);
+        await Assert.That(vm.HasDetails).IsFalse();
     }
 
-    [Fact]
-    public void HasDetails_true_when_provenance_set()
+    [Test]
+    public async Task HasDetails_true_when_provenance_set()
     {
         var vm = new FindingRowViewModel(MakeFinding(provenance: "core.analyzer.jpeg"));
-        Assert.True(vm.HasDetails);
-        Assert.True(vm.HasProvenance);
+        await Assert.That(vm.HasDetails).IsTrue();
+        await Assert.That(vm.HasProvenance).IsTrue();
     }
 
-    [Fact]
-    public void HasDetails_true_when_interpretation_confidence_known()
+    [Test]
+    public async Task HasDetails_true_when_interpretation_confidence_known()
     {
         var vm = new FindingRowViewModel(MakeFinding(interpretationConfidence: new ConfidenceScore(70)));
-        Assert.True(vm.HasDetails);
-        Assert.True(vm.HasInterpretationConfidence);
+        await Assert.That(vm.HasDetails).IsTrue();
+        await Assert.That(vm.HasInterpretationConfidence).IsTrue();
     }
 
-    [Fact]
-    public void HasDetails_true_when_supporting_factors_present()
+    [Test]
+    public async Task HasDetails_true_when_supporting_factors_present()
     {
         var vm = new FindingRowViewModel(MakeFinding(supportingFactors: ["Factor A"]));
-        Assert.True(vm.HasDetails);
-        Assert.True(vm.HasSupportingFactors);
+        await Assert.That(vm.HasDetails).IsTrue();
+        await Assert.That(vm.HasSupportingFactors).IsTrue();
     }
 
-    [Fact]
-    public void HasDetails_true_when_conflicting_factors_present()
+    [Test]
+    public async Task HasDetails_true_when_conflicting_factors_present()
     {
         var vm = new FindingRowViewModel(MakeFinding(conflictingFactors: ["Factor B"]));
-        Assert.True(vm.HasDetails);
-        Assert.True(vm.HasConflictingFactors);
+        await Assert.That(vm.HasDetails).IsTrue();
+        await Assert.That(vm.HasConflictingFactors).IsTrue();
     }
 
-    [Fact]
-    public void HasInterpretationConfidence_false_for_unknown()
+    [Test]
+    public async Task HasInterpretationConfidence_false_for_unknown()
     {
         var vm = new FindingRowViewModel(MakeFinding(interpretationConfidence: ConfidenceScore.Unknown));
-        Assert.False(vm.HasInterpretationConfidence);
+        await Assert.That(vm.HasInterpretationConfidence).IsFalse();
     }
 
-    [Fact]
-    public void HasSupportingFactors_false_for_empty_list()
+    [Test]
+    public async Task HasSupportingFactors_false_for_empty_list()
     {
         var vm = new FindingRowViewModel(MakeFinding(supportingFactors: []));
-        Assert.False(vm.HasSupportingFactors);
+        await Assert.That(vm.HasSupportingFactors).IsFalse();
     }
 
-    [Fact]
-    public void HasConflictingFactors_false_for_empty_list()
+    [Test]
+    public async Task HasConflictingFactors_false_for_empty_list()
     {
         var vm = new FindingRowViewModel(MakeFinding(conflictingFactors: []));
-        Assert.False(vm.HasConflictingFactors);
+        await Assert.That(vm.HasConflictingFactors).IsFalse();
     }
 
-    [Fact]
-    public void Toggle_expands_and_collapses()
+    [Test]
+    public async Task Toggle_expands_and_collapses()
     {
         var vm = new FindingRowViewModel(MakeFinding(provenance: "src"));
-        Assert.False(vm.IsExpanded);
+        await Assert.That(vm.IsExpanded).IsFalse();
 
         vm.IsExpanded = true;
-        Assert.True(vm.IsExpanded);
+        await Assert.That(vm.IsExpanded).IsTrue();
 
         vm.IsExpanded = false;
-        Assert.False(vm.IsExpanded);
+        await Assert.That(vm.IsExpanded).IsFalse();
     }
 }

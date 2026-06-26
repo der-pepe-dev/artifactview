@@ -1,6 +1,7 @@
+using System.IO;
 using ArtifactView.Infrastructure.Sources.AppDb;
 using Microsoft.Data.Sqlite;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Sources;
 
@@ -42,79 +43,79 @@ public sealed class AppDbCorrelatorTests : IDisposable
 
     // ── WhatsApp ──────────────────────────────────────────────────────────
 
-    [Fact]
-    public void WhatsApp_detect_returns_true_when_msgstore_present()
+    [Test]
+    public async Task WhatsApp_detect_returns_true_when_msgstore_present()
     {
         CreateWhatsAppDb([]);
         var reader = new WhatsAppDbReader();
-        Assert.True(reader.Detect(_tempDir));
+        await Assert.That(reader.Detect(_tempDir)).IsTrue();
     }
 
-    [Fact]
-    public void WhatsApp_detect_returns_false_when_no_db()
+    [Test]
+    public async Task WhatsApp_detect_returns_false_when_no_db()
     {
         var reader = new WhatsAppDbReader();
-        Assert.False(reader.Detect(_tempDir));
+        await Assert.That(reader.Detect(_tempDir)).IsFalse();
     }
 
-    [Fact]
-    public void WhatsApp_correlate_matches_filename()
+    [Test]
+    public async Task WhatsApp_correlate_matches_filename()
     {
         CreateWhatsAppDb(["/storage/WhatsApp/Media/WhatsApp Images/IMG_20210101.jpg"]);
         var reader = new WhatsAppDbReader();
         var results = reader.Correlate(_tempDir, ["IMG_20210101.jpg", "other.jpg"]);
 
-        Assert.Single(results);
-        Assert.Equal("IMG_20210101.jpg", results[0].MediaFilename);
-        Assert.Equal("WhatsApp", results[0].AppName);
-        Assert.Equal(AppDbCorrelationConfidence.High, results[0].Confidence);
+        await Assert.That(results).HasSingleItem();
+        await Assert.That(results[0].MediaFilename).IsEqualTo("IMG_20210101.jpg");
+        await Assert.That(results[0].AppName).IsEqualTo("WhatsApp");
+        await Assert.That(results[0].Confidence).IsEqualTo(AppDbCorrelationConfidence.High);
     }
 
-    [Fact]
-    public void WhatsApp_correlate_no_match_returns_empty()
+    [Test]
+    public async Task WhatsApp_correlate_no_match_returns_empty()
     {
         CreateWhatsAppDb(["/storage/WhatsApp/Media/WhatsApp Images/IMG_OTHER.jpg"]);
         var reader   = new WhatsAppDbReader();
         var results  = reader.Correlate(_tempDir, ["UNRELATED.jpg"]);
-        Assert.Empty(results);
+        await Assert.That(results).IsEmpty();
     }
 
     // ── AppDbCorrelator ───────────────────────────────────────────────────
 
-    [Fact]
-    public void Correlator_returns_empty_when_no_db_present()
+    [Test]
+    public async Task Correlator_returns_empty_when_no_db_present()
     {
         var correlator = new AppDbCorrelator();
         var results    = correlator.Correlate(_tempDir, ["photo.jpg"]);
-        Assert.Empty(results);
+        await Assert.That(results).IsEmpty();
     }
 
-    [Fact]
-    public void Correlator_returns_entry_when_whatsapp_db_found()
+    [Test]
+    public async Task Correlator_returns_entry_when_whatsapp_db_found()
     {
         CreateWhatsAppDb(["/storage/WhatsApp/Media/photo.jpg"]);
         var correlator = new AppDbCorrelator();
         var results    = correlator.Correlate(_tempDir, ["photo.jpg"]);
 
-        Assert.Single(results);
-        Assert.Equal("WhatsApp", results[0].AppName);
+        await Assert.That(results).HasSingleItem();
+        await Assert.That(results[0].AppName).IsEqualTo("WhatsApp");
     }
 
-    [Fact]
-    public void Correlator_is_case_insensitive_on_filename()
+    [Test]
+    public async Task Correlator_is_case_insensitive_on_filename()
     {
         CreateWhatsAppDb(["/storage/WhatsApp/Media/PHOTO.JPG"]);
         var correlator = new AppDbCorrelator();
         // Match lower-case query against upper-case DB entry.
         var results = correlator.Correlate(_tempDir, ["photo.jpg"]);
 
-        Assert.Single(results);
+        await Assert.That(results).HasSingleItem();
     }
 
     // ── Signal ────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Signal_detect_returns_true_when_signal_db_present()
+    [Test]
+    public async Task Signal_detect_returns_true_when_signal_db_present()
     {
         var db = Path.Combine(_tempDir, "signal.db");
         using var conn = new SqliteConnection($"Data Source={db}");
@@ -124,6 +125,6 @@ public sealed class AppDbCorrelatorTests : IDisposable
         cmd.ExecuteNonQuery();
 
         var reader = new SignalDbReader();
-        Assert.True(reader.Detect(_tempDir));
+        await Assert.That(reader.Detect(_tempDir)).IsTrue();
     }
 }

@@ -1,7 +1,8 @@
+using System.IO;
 using System.Text.Json;
 using ArtifactView.Infrastructure.Plugins;
 using ArtifactView.Plugins.Abstractions;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Plugins;
 
@@ -26,24 +27,24 @@ public sealed class PluginLoaderTests : IDisposable
         return path;
     }
 
-    [Fact]
-    public void Discover_NonExistentFolder_ReturnsEmpty()
+    [Test]
+    public async Task Discover_NonExistentFolder_ReturnsEmpty()
     {
         var loader = new PluginLoader();
         var result = loader.Discover(Path.Combine(_tempDir, "does-not-exist"));
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Discover_EmptyFolder_ReturnsEmpty()
+    [Test]
+    public async Task Discover_EmptyFolder_ReturnsEmpty()
     {
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Discover_ValidManifest_ReturnsManifest()
+    [Test]
+    public async Task Discover_ValidManifest_ReturnsManifest()
     {
         WriteManifest("plugin-a", new
         {
@@ -57,13 +58,13 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Single(result);
-        Assert.Equal("test.plugin.a", result[0].Id);
-        Assert.Equal("Test Plugin A",  result[0].Name);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].Id).IsEqualTo("test.plugin.a");
+        await Assert.That(result[0].Name).IsEqualTo("Test Plugin A");
     }
 
-    [Fact]
-    public void Discover_MalformedManifest_SkipsBadAndReturnsGood()
+    [Test]
+    public async Task Discover_MalformedManifest_SkipsBadAndReturnsGood()
     {
         // Bad manifest
         File.WriteAllText(Path.Combine(_tempDir, "plugin.json"), "{ not valid json }}}");
@@ -81,12 +82,12 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Single(result);
-        Assert.Equal("test.plugin.good", result[0].Id);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].Id).IsEqualTo("test.plugin.good");
     }
 
-    [Fact]
-    public void Discover_NullDeserializationResult_SkipsManifest()
+    [Test]
+    public async Task Discover_NullDeserializationResult_SkipsManifest()
     {
         // Serializing 'null' produces the literal "null" which deserializes to null.
         var dir = Path.Combine(_tempDir, "null-plugin");
@@ -96,11 +97,11 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Discover_MultipleValidManifests_ReturnsAll()
+    [Test]
+    public async Task Discover_MultipleValidManifests_ReturnsAll()
     {
         for (var i = 0; i < 3; i++)
             WriteManifest($"plugin-{i}", new
@@ -115,11 +116,11 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Equal(3, result.Count);
+        await Assert.That(result.Count).IsEqualTo(3);
     }
 
-    [Fact]
-    public void Discover_SetsManifestDirectory_ToContainingFolder()
+    [Test]
+    public async Task Discover_SetsManifestDirectory_ToContainingFolder()
     {
         WriteManifest("my-plugin", new
         {
@@ -129,12 +130,12 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Single(result);
-        Assert.Equal(Path.Combine(_tempDir, "my-plugin"), result[0].ManifestDirectory);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].ManifestDirectory).IsEqualTo(Path.Combine(_tempDir, "my-plugin"));
     }
 
-    [Fact]
-    public void Discover_CategoryField_DeserializesCorrectly()
+    [Test]
+    public async Task Discover_CategoryField_DeserializesCorrectly()
     {
         WriteManifest("cat-plugin", new
         {
@@ -149,12 +150,12 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Single(result);
-        Assert.Equal(PluginCategory.Analyzer, result[0].Category);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].Category).IsEqualTo(PluginCategory.Analyzer);
     }
 
-    [Fact]
-    public void Discover_MissingCategoryField_DefaultsToUnknown()
+    [Test]
+    public async Task Discover_MissingCategoryField_DefaultsToUnknown()
     {
         WriteManifest("no-cat", new
         {
@@ -164,12 +165,12 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Single(result);
-        Assert.Equal(PluginCategory.Unknown, result[0].Category);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].Category).IsEqualTo(PluginCategory.Unknown);
     }
 
-    [Fact]
-    public void Discover_AssemblyAndEntryType_RoundTrip()
+    [Test]
+    public async Task Discover_AssemblyAndEntryType_RoundTrip()
     {
         WriteManifest("asm-plugin", new
         {
@@ -185,8 +186,8 @@ public sealed class PluginLoaderTests : IDisposable
         var loader = new PluginLoader();
         var result = loader.Discover(_tempDir);
 
-        Assert.Single(result);
-        Assert.Equal("MyPlugin.dll",        result[0].AssemblyName);
-        Assert.Equal("MyPlugin.MyPluginEntry", result[0].EntryTypeName);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].AssemblyName).IsEqualTo("MyPlugin.dll");
+        await Assert.That(result[0].EntryTypeName).IsEqualTo("MyPlugin.MyPluginEntry");
     }
 }

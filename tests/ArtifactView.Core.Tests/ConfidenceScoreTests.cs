@@ -1,20 +1,20 @@
 using ArtifactView.Core.Models;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Core.Tests;
 
 public sealed class ConfidenceScoreTests
 {
-    [Theory]
-    [InlineData(-1, "Unknown")]
-    [InlineData(10, "Very low")]
-    [InlineData(35, "Low")]
-    [InlineData(50, "Moderate")]
-    [InlineData(70, "High")]
-    [InlineData(95, "Very high")]
-    public void Returns_expected_label(int value, string expected)
+    [Test]
+    [Arguments(-1, "Unknown")]
+    [Arguments(10, "Very low")]
+    [Arguments(35, "Low")]
+    [Arguments(50, "Moderate")]
+    [Arguments(70, "High")]
+    [Arguments(95, "Very high")]
+    public async Task Returns_expected_label(int value, string expected)
     {
         var score = new ConfidenceScore(value);
-        Assert.Equal(expected, score.Label);
+        await Assert.That(score.Label).IsEqualTo(expected);
     }
 }

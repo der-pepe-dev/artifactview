@@ -1,79 +1,79 @@
 using ArtifactView.Core.Models;
 using ArtifactView.Infrastructure.Analysis;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
 public sealed class ThumbnailMismatchAnalyzerTests
 {
-    [Fact]
-    public void Returns_empty_when_main_dimensions_missing()
+    [Test]
+    public async Task Returns_empty_when_main_dimensions_missing()
     {
         var results = ThumbnailMismatchAnalyzer.Analyze(null, null, 160, 120);
-        Assert.Empty(results);
+        await Assert.That(results).IsEmpty();
     }
 
-    [Fact]
-    public void Returns_empty_when_thumb_dimensions_missing()
+    [Test]
+    public async Task Returns_empty_when_thumb_dimensions_missing()
     {
         var results = ThumbnailMismatchAnalyzer.Analyze(4032, 3024, null, null);
-        Assert.Empty(results);
+        await Assert.That(results).IsEmpty();
     }
 
-    [Fact]
-    public void Returns_consistent_for_proportional_thumb()
+    [Test]
+    public async Task Returns_consistent_for_proportional_thumb()
     {
         var results = ThumbnailMismatchAnalyzer.Analyze(4032, 3024, 160, 120);
-        Assert.Single(results, r => r.Id == "thumb-dimensions-consistent");
+        await Assert.That(results.Where(r => r.Id == "thumb-dimensions-consistent")).HasSingleItem();
     }
 
-    [Fact]
-    public void Detects_thumbnail_larger_than_main()
+    [Test]
+    public async Task Detects_thumbnail_larger_than_main()
     {
         var results = ThumbnailMismatchAnalyzer.Analyze(640, 480, 1280, 960);
-        var match = Assert.Single(results, r => r.Id == "thumb-larger-than-main");
-        Assert.Equal(ReviewPriority.High, match.ReviewPriority);
+        var match = await Assert.That(results.Where(r => r.Id == "thumb-larger-than-main")).HasSingleItem();
+        await Assert.That(match.ReviewPriority).IsEqualTo(ReviewPriority.High);
     }
 
-    [Fact]
-    public void Detects_aspect_ratio_mismatch()
+    [Test]
+    public async Task Detects_aspect_ratio_mismatch()
     {
         // Main: 4:3, Thumb: 16:9
         var results = ThumbnailMismatchAnalyzer.Analyze(4000, 3000, 320, 180);
-        Assert.Contains(results, r => r.Id == "thumb-aspect-ratio-mismatch");
-        Assert.All(results.Where(r => r.Id == "thumb-aspect-ratio-mismatch"),
-            r => Assert.Equal(ReviewPriority.Medium, r.ReviewPriority));
+        await Assert.That(results).Contains(r => r.Id == "thumb-aspect-ratio-mismatch");
+        foreach (var r in results.Where(r => r.Id == "thumb-aspect-ratio-mismatch"))
+            await Assert.That(r.ReviewPriority).IsEqualTo(ReviewPriority.Medium);
     }
 
-    [Fact]
-    public void Detects_orientation_mismatch_portrait_vs_landscape()
+    [Test]
+    public async Task Detects_orientation_mismatch_portrait_vs_landscape()
     {
         // Main: landscape 4:3, Thumb: portrait 3:4 (transposed)
         var results = ThumbnailMismatchAnalyzer.Analyze(4000, 3000, 120, 160);
-        Assert.Contains(results, r => r.Id == "thumb-orientation-mismatch");
+        await Assert.That(results).Contains(r => r.Id == "thumb-orientation-mismatch");
     }
 
-    [Fact]
-    public void Thumbnail_same_size_as_main_returns_consistent()
+    [Test]
+    public async Task Thumbnail_same_size_as_main_returns_consistent()
     {
         var results = ThumbnailMismatchAnalyzer.Analyze(640, 480, 640, 480);
-        Assert.Contains(results, r => r.Id == "thumb-dimensions-consistent");
+        await Assert.That(results).Contains(r => r.Id == "thumb-dimensions-consistent");
     }
 
-    [Fact]
-    public void Larger_thumb_finding_has_high_confidence()
+    [Test]
+    public async Task Larger_thumb_finding_has_high_confidence()
     {
         var results = ThumbnailMismatchAnalyzer.Analyze(100, 100, 200, 200);
-        var match = Assert.Single(results, r => r.Id == "thumb-larger-than-main");
-        Assert.True(match.ObservationConfidence.Value >= 90);
+        var match = await Assert.That(results).HasSingleItem();
+        await Assert.That(match.ObservationConfidence.Value >= 90).IsTrue();
     }
 
-    [Fact]
-    public void Aspect_mismatch_includes_dimension_detail_in_observation()
+    [Test]
+    public async Task Aspect_mismatch_includes_dimension_detail_in_observation()
     {
         var results = ThumbnailMismatchAnalyzer.Analyze(4000, 3000, 320, 180);
         var match = results.First(r => r.Id == "thumb-aspect-ratio-mismatch");
-        Assert.Contains("320", match.Observation);
-        Assert.Contains("180", match.Observation);
+        await Assert.That(match.Observation).Contains("320");
+        await Assert.That(match.Observation).Contains("180");
     }
 }

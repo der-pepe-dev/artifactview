@@ -1,5 +1,5 @@
 using ArtifactView.Infrastructure.Formats;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Formats;
 
@@ -7,95 +7,95 @@ public sealed class FormatHandlerTests
 {
     private static Stream EmptyStream() => new MemoryStream([]);
 
-    [Fact]
+    [Test]
     public async Task Jpeg_handler_returns_correct_format()
     {
         var handler = new JpegFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("jpeg", handler.FormatId);
-        Assert.Equal("JPEG", doc.DisplayFormatName);
-        Assert.Contains("image-pixels", doc.Capabilities);
-        Assert.Contains("metadata-carrier", doc.Capabilities);
-        Assert.Contains("embedded-preview", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("jpeg");
+        await Assert.That(doc.DisplayFormatName).IsEqualTo("JPEG");
+        await Assert.That(doc.Capabilities).Contains("image-pixels");
+        await Assert.That(doc.Capabilities).Contains("metadata-carrier");
+        await Assert.That(doc.Capabilities).Contains("embedded-preview");
     }
 
-    [Fact]
+    [Test]
     public async Task Png_handler_returns_correct_format()
     {
         var handler = new PngFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("png", handler.FormatId);
-        Assert.Equal("PNG", doc.DisplayFormatName);
-        Assert.Contains("image-pixels", doc.Capabilities);
-        Assert.Contains("metadata-carrier", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("png");
+        await Assert.That(doc.DisplayFormatName).IsEqualTo("PNG");
+        await Assert.That(doc.Capabilities).Contains("image-pixels");
+        await Assert.That(doc.Capabilities).Contains("metadata-carrier");
     }
 
-    [Fact]
+    [Test]
     public async Task Tiff_handler_returns_correct_format()
     {
         var handler = new TiffFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("tiff", handler.FormatId);
-        Assert.Contains("image-pixels", doc.Capabilities);
-        Assert.Contains("multi-page", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("tiff");
+        await Assert.That(doc.Capabilities).Contains("image-pixels");
+        await Assert.That(doc.Capabilities).Contains("multi-page");
     }
 
-    [Fact]
+    [Test]
     public async Task WebP_handler_returns_correct_format()
     {
         var handler = new WebPFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("webp", handler.FormatId);
-        Assert.Equal("WebP", doc.DisplayFormatName);
-        Assert.Contains("image-pixels", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("webp");
+        await Assert.That(doc.DisplayFormatName).IsEqualTo("WebP");
+        await Assert.That(doc.Capabilities).Contains("image-pixels");
     }
 
-    [Fact]
+    [Test]
     public async Task Gif_handler_returns_multi_page_capability()
     {
         var handler = new GifFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("gif", handler.FormatId);
-        Assert.Contains("multi-page", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("gif");
+        await Assert.That(doc.Capabilities).Contains("multi-page");
     }
 
-    [Fact]
+    [Test]
     public async Task Bmp_handler_returns_correct_format()
     {
         var handler = new BmpFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("bmp", handler.FormatId);
-        Assert.Equal("BMP", doc.DisplayFormatName);
+        await Assert.That(handler.FormatId).IsEqualTo("bmp");
+        await Assert.That(doc.DisplayFormatName).IsEqualTo("BMP");
     }
 
-    [Fact]
+    [Test]
     public async Task Heif_handler_returns_correct_format()
     {
         var handler = new HeifFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("heif", handler.FormatId);
-        Assert.Contains("image-pixels", doc.Capabilities);
-        Assert.Contains("embedded-preview", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("heif");
+        await Assert.That(doc.Capabilities).Contains("image-pixels");
+        await Assert.That(doc.Capabilities).Contains("embedded-preview");
     }
 
-    [Fact]
+    [Test]
     public async Task Avif_handler_returns_correct_format()
     {
         var handler = new AvifFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("avif", handler.FormatId);
-        Assert.Contains("image-pixels", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("avif");
+        await Assert.That(doc.Capabilities).Contains("image-pixels");
     }
 
-    [Fact]
+    [Test]
     public async Task IsoBmff_detects_heic_brand()
     {
         // ftyp box: 4-byte size + "ftyp" + brand "heic"
@@ -106,12 +106,12 @@ public sealed class FormatHandlerTests
         var handler = new IsoBmffFormatHandler();
         var doc = await handler.OpenAsync(new MemoryStream(header), CancellationToken.None);
 
-        Assert.Equal("isobmff", handler.FormatId);
-        Assert.Equal("HEIC", doc.DisplayFormatName);
-        Assert.Contains("image-pixels", doc.Capabilities);
+        await Assert.That(handler.FormatId).IsEqualTo("isobmff");
+        await Assert.That(doc.DisplayFormatName).IsEqualTo("HEIC");
+        await Assert.That(doc.Capabilities).Contains("image-pixels");
     }
 
-    [Fact]
+    [Test]
     public async Task IsoBmff_detects_avif_brand()
     {
         var header = new byte[12];
@@ -121,15 +121,15 @@ public sealed class FormatHandlerTests
         var handler = new IsoBmffFormatHandler();
         var doc = await handler.OpenAsync(new MemoryStream(header), CancellationToken.None);
 
-        Assert.Equal("AVIF", doc.DisplayFormatName);
+        await Assert.That(doc.DisplayFormatName).IsEqualTo("AVIF");
     }
 
-    [Fact]
+    [Test]
     public async Task IsoBmff_falls_back_for_unknown_brand()
     {
         var handler = new IsoBmffFormatHandler();
         var doc = await handler.OpenAsync(EmptyStream(), CancellationToken.None);
 
-        Assert.Equal("ISO Base Media", doc.DisplayFormatName);
+        await Assert.That(doc.DisplayFormatName).IsEqualTo("ISO Base Media");
     }
 }

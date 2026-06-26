@@ -1,6 +1,7 @@
+using System.IO;
 using ArtifactView.Infrastructure.Sources.IPhoneBackup;
 using Microsoft.Data.Sqlite;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Sources;
 
@@ -49,15 +50,15 @@ public sealed class ManifestDbReaderTests : IDisposable
         return path;
     }
 
-    [Fact]
-    public void Returns_empty_when_file_missing()
+    [Test]
+    public async Task Returns_empty_when_file_missing()
     {
         var result = ManifestDbReader.ReadMediaFiles("/nonexistent/Manifest.db");
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Returns_camera_roll_jpeg_entries()
+    [Test]
+    public async Task Returns_camera_roll_jpeg_entries()
     {
         var path = CreateManifestDb(
         [
@@ -69,12 +70,13 @@ public sealed class ManifestDbReaderTests : IDisposable
 
         var result = ManifestDbReader.ReadMediaFiles(path);
 
-        Assert.Equal(2, result.Count);
-        Assert.All(result, r => Assert.Equal("CameraRollDomain", r.Domain));
+        await Assert.That(result.Count).IsEqualTo(2);
+        foreach (var r in result)
+            await Assert.That(r.Domain).IsEqualTo("CameraRollDomain");
     }
 
-    [Fact]
-    public void Skips_non_media_files()
+    [Test]
+    public async Task Skips_non_media_files()
     {
         var path = CreateManifestDb(
         [
@@ -86,12 +88,12 @@ public sealed class ManifestDbReaderTests : IDisposable
 
         var result = ManifestDbReader.ReadMediaFiles(path);
 
-        Assert.Single(result);
-        Assert.Equal("IMG_0001.JPG", result[0].DisplayName);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].DisplayName).IsEqualTo("IMG_0001.JPG");
     }
 
-    [Fact]
-    public void Skips_directories_flag_2()
+    [Test]
+    public async Task Skips_directories_flag_2()
     {
         var path = CreateManifestDb(
         [
@@ -103,11 +105,11 @@ public sealed class ManifestDbReaderTests : IDisposable
 
         var result = ManifestDbReader.ReadMediaFiles(path);
 
-        Assert.Single(result);
+        await Assert.That(result).HasSingleItem();
     }
 
-    [Fact]
-    public void Includes_video_files()
+    [Test]
+    public async Task Includes_video_files()
     {
         var path = CreateManifestDb(
         [
@@ -119,11 +121,11 @@ public sealed class ManifestDbReaderTests : IDisposable
 
         var result = ManifestDbReader.ReadMediaFiles(path);
 
-        Assert.Equal(2, result.Count);
+        await Assert.That(result.Count).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Record_display_name_is_filename_only()
+    [Test]
+    public async Task Record_display_name_is_filename_only()
     {
         var path = CreateManifestDb(
         [
@@ -133,11 +135,11 @@ public sealed class ManifestDbReaderTests : IDisposable
 
         var result = ManifestDbReader.ReadMediaFiles(path);
 
-        Assert.Equal("IMG_0001.JPG", result[0].DisplayName);
+        await Assert.That(result[0].DisplayName).IsEqualTo("IMG_0001.JPG");
     }
 
-    [Fact]
-    public void PhysicalPath_uses_first_two_chars_as_subdir()
+    [Test]
+    public async Task PhysicalPath_uses_first_two_chars_as_subdir()
     {
         var backupRoot = Path.GetTempPath();
         var fileId     = "aabbccddeeff112233445566778899001122334455";
@@ -148,22 +150,22 @@ public sealed class ManifestDbReaderTests : IDisposable
 
         // When the file doesn't exist, the sub-dir form is constructed.
         // (The method checks File.Exists; on a miss it falls back to root-level.)
-        Assert.Contains(fileId, result);
+        await Assert.That(result).Contains(fileId);
     }
 
-    [Fact]
-    public void LogicalDisplayPath_includes_domain_prefix()
+    [Test]
+    public async Task LogicalDisplayPath_includes_domain_prefix()
     {
         var record = new ManifestRecord(
             "aa00000000000000000000000000000000000001",
             "CameraRollDomain",
             "Media/DCIM/100APPLE/IMG_0001.JPG");
 
-        Assert.StartsWith("CameraRollDomain/", record.LogicalDisplayPath);
+        await Assert.That(record.LogicalDisplayPath).StartsWith("CameraRollDomain/");
     }
 
-    [Fact]
-    public void Includes_app_domain_media_files()
+    [Test]
+    public async Task Includes_app_domain_media_files()
     {
         var path = CreateManifestDb(
         [
@@ -174,7 +176,7 @@ public sealed class ManifestDbReaderTests : IDisposable
 
         var result = ManifestDbReader.ReadMediaFiles(path);
 
-        Assert.Single(result);
-        Assert.Equal("AppDomain-com.instagram.Instagram", result[0].Domain);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].Domain).IsEqualTo("AppDomain-com.instagram.Instagram");
     }
 }

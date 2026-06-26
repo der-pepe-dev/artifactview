@@ -1,6 +1,7 @@
+using System.IO;
 using ArtifactView.Contracts.Sources;
 using ArtifactView.Infrastructure.Sources;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Sources;
 
@@ -18,7 +19,7 @@ public sealed class FolderSourceTests : IDisposable
     private void WriteFile(string name, byte[]? content = null) =>
         File.WriteAllBytes(Path.Combine(_dir, name), content ?? [0xFF, 0xD8, 0xFF]);
 
-    [Fact]
+    [Test]
     public async Task EnumerateItemsAsync_returns_image_files()
     {
         WriteFile("photo.jpg");
@@ -30,12 +31,12 @@ public sealed class FolderSourceTests : IDisposable
         await foreach (var item in session.EnumerateItemsAsync(CancellationToken.None))
             items.Add(item);
 
-        Assert.Equal(2, items.Count);
-        Assert.Contains(items, i => i.DisplayName == "photo.jpg");
-        Assert.Contains(items, i => i.DisplayName == "image.png");
+        await Assert.That(items.Count).IsEqualTo(2);
+        await Assert.That(items).Contains(i => i.DisplayName == "photo.jpg");
+        await Assert.That(items).Contains(i => i.DisplayName == "image.png");
     }
 
-    [Fact]
+    [Test]
     public async Task EnumerateItemsAsync_skips_non_image_extensions()
     {
         WriteFile("doc.pdf");
@@ -47,11 +48,11 @@ public sealed class FolderSourceTests : IDisposable
         await foreach (var item in session.EnumerateItemsAsync(CancellationToken.None))
             items.Add(item);
 
-        Assert.Single(items);
-        Assert.Equal("photo.jpg", items[0].DisplayName);
+        await Assert.That(items).HasSingleItem();
+        await Assert.That(items[0].DisplayName).IsEqualTo("photo.jpg");
     }
 
-    [Fact]
+    [Test]
     public async Task EnumerateItemsAsync_recursive_finds_subdirectory_files()
     {
         var sub = Path.Combine(_dir, "sub");
@@ -64,10 +65,10 @@ public sealed class FolderSourceTests : IDisposable
         await foreach (var item in session.EnumerateItemsAsync(CancellationToken.None))
             items.Add(item);
 
-        Assert.Equal(2, items.Count);
+        await Assert.That(items.Count).IsEqualTo(2);
     }
 
-    [Fact]
+    [Test]
     public async Task EnumerateItemsAsync_non_recursive_ignores_subdirectories()
     {
         var sub = Path.Combine(_dir, "sub");
@@ -80,11 +81,11 @@ public sealed class FolderSourceTests : IDisposable
         await foreach (var item in session.EnumerateItemsAsync(CancellationToken.None))
             items.Add(item);
 
-        Assert.Single(items);
-        Assert.Equal("top.jpg", items[0].DisplayName);
+        await Assert.That(items).HasSingleItem();
+        await Assert.That(items[0].DisplayName).IsEqualTo("top.jpg");
     }
 
-    [Fact]
+    [Test]
     public async Task EnumerateItemsAsync_yields_empty_for_missing_folder()
     {
         var session = new FolderSourceSession("/nonexistent/path/xyz", recursive: false);
@@ -92,10 +93,10 @@ public sealed class FolderSourceTests : IDisposable
         await foreach (var item in session.EnumerateItemsAsync(CancellationToken.None))
             items.Add(item);
 
-        Assert.Empty(items);
+        await Assert.That(items).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task OpenReadAsync_returns_stream_for_existing_file()
     {
         WriteFile("photo.jpg");
@@ -105,10 +106,10 @@ public sealed class FolderSourceTests : IDisposable
         await using var stream = await session.OpenReadAsync(path, CancellationToken.None);
 
         Assert.NotNull(stream);
-        Assert.True(stream.Length > 0);
+        await Assert.That(stream.Length > 0).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task OpenReadAsync_throws_for_missing_file()
     {
         var session = new FolderSourceSession(_dir, recursive: false);
@@ -116,21 +117,21 @@ public sealed class FolderSourceTests : IDisposable
             () => session.OpenReadAsync("/nonexistent/photo.jpg", CancellationToken.None).AsTask());
     }
 
-    [Fact]
-    public void SourceId_includes_folder_path()
+    [Test]
+    public async Task SourceId_includes_folder_path()
     {
         var session = new FolderSourceSession(_dir, recursive: false);
-        Assert.Contains(_dir, session.SourceId);
+        await Assert.That(session.SourceId).Contains(_dir);
     }
 
-    [Fact]
-    public void Provider_id_is_correct()
+    [Test]
+    public async Task Provider_id_is_correct()
     {
         var provider = new FolderSourceProvider();
-        Assert.Equal("core.source.folder", provider.Id);
+        await Assert.That(provider.Id).IsEqualTo("core.source.folder");
     }
 
-    [Fact]
+    [Test]
     public async Task Provider_opens_non_recursive_by_default()
     {
         var provider = new FolderSourceProvider();
@@ -139,7 +140,7 @@ public sealed class FolderSourceTests : IDisposable
         Assert.NotNull(session);
     }
 
-    [Fact]
+    [Test]
     public async Task Provider_opens_recursive_when_option_set()
     {
         var provider = new FolderSourceProvider();
@@ -150,7 +151,7 @@ public sealed class FolderSourceTests : IDisposable
         };
         await using var session = await provider.OpenAsync(request, CancellationToken.None);
 
-        var folderSession = Assert.IsType<FolderSourceSession>(session);
+        var folderSession = await Assert.That(session).IsTypeOf<FolderSourceSession>();
         // Verify recursive works by placing a file in a subdirectory.
         var sub = Path.Combine(_dir, "sub2");
         Directory.CreateDirectory(sub);
@@ -159,6 +160,6 @@ public sealed class FolderSourceTests : IDisposable
         var items = new List<SourceItemDescriptor>();
         await foreach (var item in folderSession.EnumerateItemsAsync(CancellationToken.None))
             items.Add(item);
-        Assert.Single(items);
+        await Assert.That(items).HasSingleItem();
     }
 }

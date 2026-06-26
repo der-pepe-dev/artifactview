@@ -1,7 +1,8 @@
+using System.IO;
 using ArtifactView.Contracts.Processing;
 using ArtifactView.Infrastructure.Metadata;
 using ArtifactView.Infrastructure.Plugins.Adapters;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Plugins;
 
@@ -15,38 +16,38 @@ public sealed class LoFiReconstructionProcessorPluginTests
         public IReadOnlyList<string> AvailableArtifacts => [];
     }
 
-    [Fact]
-    public void Plugin_id_is_stable()
-        => Assert.Equal("core.processor.lofi-exif-thumb", _plugin.Id);
+    [Test]
+    public async Task Plugin_id_is_stable()
+        => await Assert.That(_plugin.Id).IsEqualTo("core.processor.lofi-exif-thumb");
 
-    [Fact]
-    public void Plugin_is_evidence_safe()
-        => Assert.True(_plugin.IsEvidenceSafe);
+    [Test]
+    public async Task Plugin_is_evidence_safe()
+        => await Assert.That(_plugin.IsEvidenceSafe).IsTrue();
 
-    [Fact]
-    public void Supports_returns_false_for_nonexistent_file()
-        => Assert.False(_plugin.Supports(new FakeContext("/nonexistent/path/photo.jpg")));
+    [Test]
+    public async Task Supports_returns_false_for_nonexistent_file()
+        => await Assert.That(_plugin.Supports(new FakeContext("/nonexistent/path/photo.jpg"))).IsFalse();
 
-    [Fact]
-    public void Supports_returns_false_for_wrong_extension()
+    [Test]
+    public async Task Supports_returns_false_for_wrong_extension()
     {
         var path = Path.ChangeExtension(Path.GetTempFileName(), ".png");
         File.WriteAllBytes(path, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-        try   { Assert.False(_plugin.Supports(new FakeContext(path))); }
+        try   { await Assert.That(_plugin.Supports(new FakeContext(path))).IsFalse(); }
         finally { File.Delete(path); }
     }
 
-    [Fact]
+    [Test]
     public async Task ProcessAsync_returns_failed_for_nonexistent_file()
     {
         var result = await _plugin.ProcessAsync(
             new FakeContext("/nonexistent/path/photo.jpg"), CancellationToken.None);
-        Assert.Equal("failed", result.ResultKind);
-        Assert.Equal("exif-thumbnail", result.ArtifactId);
+        await Assert.That(result.ResultKind).IsEqualTo("failed");
+        await Assert.That(result.ArtifactId).IsEqualTo("exif-thumbnail");
         Assert.Null(result.OutputPath);
     }
 
-    [Fact]
+    [Test]
     public async Task ProcessAsync_returns_failed_for_jpeg_without_thumbnail()
     {
         // Minimal valid JPEG (SOI + EOI) — no IFD1 thumbnail.
@@ -55,12 +56,12 @@ public sealed class LoFiReconstructionProcessorPluginTests
         try
         {
             var result = await _plugin.ProcessAsync(new FakeContext(path), CancellationToken.None);
-            Assert.Equal("failed", result.ResultKind);
+            await Assert.That(result.ResultKind).IsEqualTo("failed");
         }
         finally { File.Delete(path); }
     }
 
-    [Fact]
+    [Test]
     public async Task ProcessAsync_respects_cancellation()
     {
         var cts = new CancellationTokenSource();
@@ -69,19 +70,19 @@ public sealed class LoFiReconstructionProcessorPluginTests
             _plugin.ProcessAsync(new FakeContext("any.jpg"), cts.Token).AsTask());
     }
 
-    [SkippableFact]
+    [Test]
     public async Task ProcessAsync_produces_png_from_jpeg_with_thumbnail()
     {
         // Requires a real JPEG with EXIF thumbnail. Skip if not found.
         var testJpeg = Environment.GetEnvironmentVariable("ARTIFACTVIEW_TEST_JPEG_WITH_THUMB");
-        Skip.If(string.IsNullOrEmpty(testJpeg) || !File.Exists(testJpeg),
+        Skip.When(string.IsNullOrEmpty(testJpeg) || !File.Exists(testJpeg),
             "Set ARTIFACTVIEW_TEST_JPEG_WITH_THUMB to a JPEG with an embedded thumbnail.");
 
         var result = await _plugin.ProcessAsync(new FakeContext(testJpeg!), CancellationToken.None);
-        Assert.Equal("lofi-reconstruction", result.ResultKind);
-        Assert.Equal("exif-thumbnail", result.ArtifactId);
+        await Assert.That(result.ResultKind).IsEqualTo("lofi-reconstruction");
+        await Assert.That(result.ArtifactId).IsEqualTo("exif-thumbnail");
         Assert.NotNull(result.OutputPath);
-        Assert.True(File.Exists(result.OutputPath));
-        Assert.EndsWith("__lofi_reconstruction__exifthumb.png", result.OutputPath);
+        await Assert.That(File.Exists(result.OutputPath)).IsTrue();
+        await Assert.That(result.OutputPath).EndsWith("__lofi_reconstruction__exifthumb.png");
     }
 }

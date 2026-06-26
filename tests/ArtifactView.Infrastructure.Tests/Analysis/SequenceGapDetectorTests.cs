@@ -1,5 +1,5 @@
 using ArtifactView.Infrastructure.Analysis;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
@@ -8,43 +8,43 @@ public sealed class SequenceGapDetectorTests
     private static (string Path, string DisplayName) F(string name)
         => ($"/folder/{name}", name);
 
-    [Fact]
-    public void Returns_empty_for_no_files()
-        => Assert.Empty(SequenceGapDetector.Detect([]));
+    [Test]
+    public async Task Returns_empty_for_no_files()
+        => await Assert.That(SequenceGapDetector.Detect([])).IsEmpty();
 
-    [Fact]
-    public void Returns_empty_for_single_file()
-        => Assert.Empty(SequenceGapDetector.Detect([F("IMG_0001.jpg")]));
+    [Test]
+    public async Task Returns_empty_for_single_file()
+        => await Assert.That(SequenceGapDetector.Detect([F("IMG_0001.jpg")])).IsEmpty();
 
-    [Fact]
-    public void Returns_empty_for_contiguous_sequence()
+    [Test]
+    public async Task Returns_empty_for_contiguous_sequence()
     {
         var files = new[] { F("IMG_0001.jpg"), F("IMG_0002.jpg"), F("IMG_0003.jpg") };
-        Assert.Empty(SequenceGapDetector.Detect(files));
+        await Assert.That(SequenceGapDetector.Detect(files)).IsEmpty();
     }
 
-    [Fact]
-    public void Detects_gap_of_two_missing_frames()
+    [Test]
+    public async Task Detects_gap_of_two_missing_frames()
     {
         // 0001, 0004 → missing 0002, 0003 → gap = 2
         var files = new[] { F("IMG_0001.jpg"), F("IMG_0004.jpg") };
         var gaps  = SequenceGapDetector.Detect(files);
-        var gap   = Assert.Single(gaps);
-        Assert.Equal(1, gap.LastBefore);
-        Assert.Equal(4, gap.FirstAfter);
-        Assert.Equal(2, gap.MissingCount);
+        var gap   = await Assert.That(gaps).HasSingleItem();
+        await Assert.That(gap.LastBefore).IsEqualTo(1);
+        await Assert.That(gap.FirstAfter).IsEqualTo(4);
+        await Assert.That(gap.MissingCount).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Single_missing_frame_not_reported()
+    [Test]
+    public async Task Single_missing_frame_not_reported()
     {
         // Gap of 1 is below MinGapSize threshold.
         var files = new[] { F("IMG_0001.jpg"), F("IMG_0003.jpg") };
-        Assert.Empty(SequenceGapDetector.Detect(files));
+        await Assert.That(SequenceGapDetector.Detect(files)).IsEmpty();
     }
 
-    [Fact]
-    public void Reports_multiple_gaps_in_sequence()
+    [Test]
+    public async Task Reports_multiple_gaps_in_sequence()
     {
         var files = new[]
         {
@@ -55,11 +55,11 @@ public sealed class SequenceGapDetectorTests
             F("IMG_0020.jpg"),  // gap of 8
         };
         var gaps = SequenceGapDetector.Detect(files);
-        Assert.Equal(2, gaps.Count);
+        await Assert.That(gaps.Count).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Groups_by_prefix_independently()
+    [Test]
+    public async Task Groups_by_prefix_independently()
     {
         // IMG_ and DSC_ are separate camera sequences.
         var files = new[]
@@ -70,12 +70,12 @@ public sealed class SequenceGapDetectorTests
             F("DSC_0002.jpg"),  // contiguous — no gap
         };
         var gaps = SequenceGapDetector.Detect(files);
-        var gap  = Assert.Single(gaps);
-        Assert.Equal("IMG_", gap.Prefix);
+        var gap  = await Assert.That(gaps).HasSingleItem();
+        await Assert.That(gap.Prefix).IsEqualTo("IMG_");
     }
 
-    [Fact]
-    public void Files_without_trailing_digits_are_skipped()
+    [Test]
+    public async Task Files_without_trailing_digits_are_skipped()
     {
         var files = new[]
         {
@@ -85,12 +85,12 @@ public sealed class SequenceGapDetectorTests
             F("IMG_0010.jpg"),
         };
         var gaps = SequenceGapDetector.Detect(files);
-        var gap  = Assert.Single(gaps);
-        Assert.Equal("IMG_", gap.Prefix);
+        var gap  = await Assert.That(gaps).HasSingleItem();
+        await Assert.That(gap.Prefix).IsEqualTo("IMG_");
     }
 
-    [Fact]
-    public void PathBefore_and_PathAfter_are_correct()
+    [Test]
+    public async Task PathBefore_and_PathAfter_are_correct()
     {
         var files = new[]
         {
@@ -98,13 +98,13 @@ public sealed class SequenceGapDetectorTests
             ("/folder/IMG_0005.jpg", "IMG_0005.jpg"),
         };
         var gaps = SequenceGapDetector.Detect(files);
-        var gap  = Assert.Single(gaps);
-        Assert.Equal("/folder/IMG_0001.jpg", gap.PathBefore);
-        Assert.Equal("/folder/IMG_0005.jpg", gap.PathAfter);
+        var gap  = await Assert.That(gaps).HasSingleItem();
+        await Assert.That(gap.PathBefore).IsEqualTo("/folder/IMG_0001.jpg");
+        await Assert.That(gap.PathAfter).IsEqualTo("/folder/IMG_0005.jpg");
     }
 
-    [Fact]
-    public void Handles_unordered_input()
+    [Test]
+    public async Task Handles_unordered_input()
     {
         // Files given out of order — detector must sort internally.
         var files = new[]
@@ -114,13 +114,13 @@ public sealed class SequenceGapDetectorTests
             F("IMG_0002.jpg"),
         };
         var gaps = SequenceGapDetector.Detect(files);
-        var gap  = Assert.Single(gaps);
-        Assert.Equal(2, gap.LastBefore);
-        Assert.Equal(10, gap.FirstAfter);
+        var gap  = await Assert.That(gaps).HasSingleItem();
+        await Assert.That(gap.LastBefore).IsEqualTo(2);
+        await Assert.That(gap.FirstAfter).IsEqualTo(10);
     }
 
-    [Fact]
-    public void GoPro_prefix_detected_correctly()
+    [Test]
+    public async Task GoPro_prefix_detected_correctly()
     {
         var files = new[]
         {
@@ -128,8 +128,8 @@ public sealed class SequenceGapDetectorTests
             F("GOPR0110.MP4"),  // gap of 9
         };
         var gaps = SequenceGapDetector.Detect(files);
-        var gap  = Assert.Single(gaps);
-        Assert.Equal("GOPR", gap.Prefix);
-        Assert.Equal(9, gap.MissingCount);
+        var gap  = await Assert.That(gaps).HasSingleItem();
+        await Assert.That(gap.Prefix).IsEqualTo("GOPR");
+        await Assert.That(gap.MissingCount).IsEqualTo(9);
     }
 }

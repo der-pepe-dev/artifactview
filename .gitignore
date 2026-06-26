@@ -19,3 +19,6 @@ docs/environment.md
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .obsidian/cache/
+
+# Claude Code personal/local settings
+.claude/settings.local.json

@@ -1,6 +1,7 @@
-using Xunit;
+using System.IO;
 using ArtifactView.Core.Models;
 using ArtifactView.Infrastructure.Analysis;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
@@ -36,78 +37,78 @@ public sealed class PngIntegrityAnalyzerTests : IDisposable
 
     // ── too small ────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void TooSmall_ReturnsCriticalFinding()
+    [Test]
+    public async Task TooSmall_ReturnsCriticalFinding()
     {
         var path = TempFile(new byte[10]); // under 20-byte minimum
         var findings = PngIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("png-too-small", findings[0].Id);
-        Assert.Equal(ReviewPriority.Critical, findings[0].ReviewPriority);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("png-too-small");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.Critical);
     }
 
     // ── invalid signature ────────────────────────────────────────────────────
 
-    [Fact]
-    public void WrongSignature_ReturnsHighFinding()
+    [Test]
+    public async Task WrongSignature_ReturnsHighFinding()
     {
         var data = new byte[30]; // all zeros — wrong signature
         var path = TempFile(data);
         var findings = PngIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("png-invalid-signature", findings[0].Id);
-        Assert.Equal(ReviewPriority.High, findings[0].ReviewPriority);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("png-invalid-signature");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.High);
     }
 
     // ── intact structure ─────────────────────────────────────────────────────
 
-    [Fact]
-    public void ValidPng_ReturnsStructureOk()
+    [Test]
+    public async Task ValidPng_ReturnsStructureOk()
     {
         var path = TempFile(ValidPng());
         var findings = PngIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("png-structure-ok", findings[0].Id);
-        Assert.Equal(ReviewPriority.None, findings[0].ReviewPriority);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("png-structure-ok");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.None);
     }
 
     // ── missing IEND ─────────────────────────────────────────────────────────
 
-    [Fact]
-    public void MissingIend_ReturnsMissingIendFinding()
+    [Test]
+    public async Task MissingIend_ReturnsMissingIendFinding()
     {
         // Valid signature but no IEND — just padding bytes
         var data = s_sig.Concat(new byte[30]).ToArray();
         var path = TempFile(data);
         var findings = PngIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("png-missing-iend", findings[0].Id);
-        Assert.Equal(ReviewPriority.Medium, findings[0].ReviewPriority);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("png-missing-iend");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.Medium);
     }
 
     // ── appended data ────────────────────────────────────────────────────────
 
-    [Fact]
-    public void AppendedData_ReturnsAppendedDataFinding()
+    [Test]
+    public async Task AppendedData_ReturnsAppendedDataFinding()
     {
         // Valid PNG with 5 garbage bytes after IEND
         var data = ValidPng().Concat(new byte[5]).ToArray();
         var path = TempFile(data);
         var findings = PngIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("png-appended-data", findings[0].Id);
-        Assert.Equal(ReviewPriority.Medium, findings[0].ReviewPriority);
-        Assert.Contains("5 byte(s)", findings[0].Observation);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("png-appended-data");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.Medium);
+        await Assert.That(findings[0].Observation).Contains("5 byte(s)");
     }
 
-    [Fact]
-    public void AppendedData_LargeAppend_CountedCorrectly()
+    [Test]
+    public async Task AppendedData_LargeAppend_CountedCorrectly()
     {
         var data = ValidPng(paddingBytes: 20).Concat(new byte[15]).ToArray();
         var path = TempFile(data);
         var findings = PngIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("png-appended-data", findings[0].Id);
-        Assert.Contains("15 byte(s)", findings[0].Observation);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("png-appended-data");
+        await Assert.That(findings[0].Observation).Contains("15 byte(s)");
     }
 }

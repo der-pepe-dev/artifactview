@@ -2,7 +2,7 @@ using ArtifactView.Contracts.Analysis;
 using ArtifactView.Core.Models;
 using ArtifactView.Infrastructure.Plugins;
 using ArtifactView.Plugins.Abstractions;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Plugins;
 
@@ -35,7 +35,7 @@ public sealed class PluginActivatorTests
         ManifestDirectory = manifestDir
     };
 
-    [Fact]
+    [Test]
     public void TryActivate_NoAssemblyName_ReturnsNull()
     {
         var result = new PluginActivator().TryActivate<IAnalyzer>(
@@ -44,7 +44,7 @@ public sealed class PluginActivatorTests
         Assert.Null(result);
     }
 
-    [Fact]
+    [Test]
     public void TryActivate_NoEntryTypeName_ReturnsNull()
     {
         var result = new PluginActivator().TryActivate<IAnalyzer>(
@@ -53,7 +53,7 @@ public sealed class PluginActivatorTests
         Assert.Null(result);
     }
 
-    [Fact]
+    [Test]
     public void TryActivate_NoManifestDirectory_ReturnsNull()
     {
         var result = new PluginActivator().TryActivate<IAnalyzer>(
@@ -62,7 +62,7 @@ public sealed class PluginActivatorTests
         Assert.Null(result);
     }
 
-    [Fact]
+    [Test]
     public void TryActivate_AssemblyFileNotFound_ReturnsNull()
     {
         var result = new PluginActivator().TryActivate<IAnalyzer>(
@@ -71,7 +71,7 @@ public sealed class PluginActivatorTests
         Assert.Null(result);
     }
 
-    [Fact]
+    [Test]
     public void TryActivate_TypeNotFoundInAssembly_ReturnsNull()
     {
         var assemblyPath = typeof(PluginActivatorTests).Assembly.Location;
@@ -83,7 +83,7 @@ public sealed class PluginActivatorTests
         Assert.Null(result);
     }
 
-    [Fact]
+    [Test]
     public void TryActivate_TypeDoesNotImplementInterface_ReturnsNull()
     {
         var assemblyPath = typeof(PluginActivatorTests).Assembly.Location;
@@ -96,8 +96,8 @@ public sealed class PluginActivatorTests
         Assert.Null(result);
     }
 
-    [Fact]
-    public void TryActivate_ValidPlugin_ReturnsInstance()
+    [Test]
+    public async Task TryActivate_ValidPlugin_ReturnsInstance()
     {
         var assemblyPath = typeof(PluginActivatorTests).Assembly.Location;
         var result = new PluginActivator().TryActivate<IAnalyzer>(
@@ -106,6 +106,6 @@ public sealed class PluginActivatorTests
                  manifestDir: Path.GetDirectoryName(assemblyPath)));
 
         Assert.NotNull(result);
-        Assert.Equal("test-activation", result!.Id);
+        await Assert.That(result!.Id).IsEqualTo("test-activation");
     }
 }

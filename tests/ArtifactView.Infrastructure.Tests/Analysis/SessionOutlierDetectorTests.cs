@@ -1,5 +1,5 @@
 using ArtifactView.Infrastructure.Analysis;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
@@ -11,26 +11,26 @@ public sealed class SessionOutlierDetectorTests
         string name, DateTime? time = null, string? model = null) =>
         ($"/photos/{name}", time, model);
 
-    [Fact]
-    public void Returns_empty_for_single_item()
+    [Test]
+    public async Task Returns_empty_for_single_item()
     {
         var result = SessionOutlierDetector.Detect([Item("a.jpg", Base, "Canon EOS R5")]);
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Returns_empty_when_all_timestamps_similar()
+    [Test]
+    public async Task Returns_empty_when_all_timestamps_similar()
     {
         var items = Enumerable.Range(0, 6)
             .Select(i => Item($"p{i}.jpg", Base.AddMinutes(i * 5), "Canon EOS R5"))
             .ToList();
 
         var result = SessionOutlierDetector.Detect(items);
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Detects_timestamp_outlier_far_in_future()
+    [Test]
+    public async Task Detects_timestamp_outlier_far_in_future()
     {
         var items = Enumerable.Range(0, 5)
             .Select(i => Item($"p{i}.jpg", Base.AddMinutes(i * 5)))
@@ -39,14 +39,14 @@ public sealed class SessionOutlierDetectorTests
 
         var result = SessionOutlierDetector.Detect(items);
 
-        Assert.Single(result);
-        Assert.Equal("/photos/outlier.jpg", result[0].Path);
-        Assert.NotEmpty(result[0].Reasons);
-        Assert.Contains("outside the session", result[0].Reasons[0], StringComparison.OrdinalIgnoreCase);
+        await Assert.That(result).HasSingleItem();
+        await Assert.That(result[0].Path).IsEqualTo("/photos/outlier.jpg");
+        await Assert.That(result[0].Reasons).IsNotEmpty();
+        await Assert.That(result[0].Reasons[0]).Contains("outside the session");
     }
 
-    [Fact]
-    public void Detects_timestamp_outlier_far_in_past()
+    [Test]
+    public async Task Detects_timestamp_outlier_far_in_past()
     {
         var items = Enumerable.Range(0, 5)
             .Select(i => Item($"p{i}.jpg", Base.AddMinutes(i * 5)))
@@ -56,11 +56,11 @@ public sealed class SessionOutlierDetectorTests
         var result = SessionOutlierDetector.Detect(items);
 
         var paths = result.Select(r => r.Path).ToList();
-        Assert.Contains("/photos/old.jpg", paths);
+        await Assert.That(paths).Contains("/photos/old.jpg");
     }
 
-    [Fact]
-    public void Does_not_flag_items_when_fewer_than_min_samples()
+    [Test]
+    public async Task Does_not_flag_items_when_fewer_than_min_samples()
     {
         // Only 3 items with timestamps — below MinTimestampSamples=4
         var items = new[]
@@ -71,11 +71,11 @@ public sealed class SessionOutlierDetectorTests
         }.ToList();
 
         var result = SessionOutlierDetector.Detect(items);
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Ignores_items_without_timestamps()
+    [Test]
+    public async Task Ignores_items_without_timestamps()
     {
         var items = Enumerable.Range(0, 5)
             .Select(i => Item($"p{i}.jpg", Base.AddMinutes(i * 5)))
@@ -83,11 +83,11 @@ public sealed class SessionOutlierDetectorTests
             .ToList();
 
         var result = SessionOutlierDetector.Detect(items);
-        Assert.DoesNotContain(result, r => r.Path.Contains("no_date"));
+        await Assert.That(result).DoesNotContain(r => r.Path.Contains("no_date"));
     }
 
-    [Fact]
-    public void Detects_camera_model_outlier()
+    [Test]
+    public async Task Detects_camera_model_outlier()
     {
         var items = Enumerable.Range(0, 7)
             .Select(i => Item($"p{i}.jpg", Base.AddMinutes(i * 5), "Canon EOS R5"))
@@ -98,11 +98,11 @@ public sealed class SessionOutlierDetectorTests
 
         var cameraOutlier = result.FirstOrDefault(r => r.Path.Contains("other"));
         Assert.NotNull(cameraOutlier);
-        Assert.Contains("Camera model", cameraOutlier!.Reasons[0], StringComparison.OrdinalIgnoreCase);
+        await Assert.That(cameraOutlier!.Reasons[0]).Contains("Camera model");
     }
 
-    [Fact]
-    public void Does_not_flag_camera_outlier_when_no_dominant_majority()
+    [Test]
+    public async Task Does_not_flag_camera_outlier_when_no_dominant_majority()
     {
         // 50/50 split — neither is majority
         var items = new[]
@@ -114,11 +114,11 @@ public sealed class SessionOutlierDetectorTests
         }.ToList();
 
         var result = SessionOutlierDetector.Detect(items);
-        Assert.DoesNotContain(result, r => r.Reasons.Any(r2 => r2.Contains("Camera model")));
+        await Assert.That(result).DoesNotContain(r => r.Reasons.Any(r2 => r2.Contains("Camera model")));
     }
 
-    [Fact]
-    public void Does_not_flag_camera_outlier_with_fewer_than_min_samples()
+    [Test]
+    public async Task Does_not_flag_camera_outlier_with_fewer_than_min_samples()
     {
         // Only 2 files with models — below MinModelSamples=3
         var items = new[]
@@ -128,11 +128,11 @@ public sealed class SessionOutlierDetectorTests
         }.ToList();
 
         var result = SessionOutlierDetector.Detect(items);
-        Assert.DoesNotContain(result, r => r.Reasons.Any(r2 => r2.Contains("Camera model")));
+        await Assert.That(result).DoesNotContain(r => r.Reasons.Any(r2 => r2.Contains("Camera model")));
     }
 
-    [Fact]
-    public void Can_flag_both_timestamp_and_camera_outlier_on_same_file()
+    [Test]
+    public async Task Can_flag_both_timestamp_and_camera_outlier_on_same_file()
     {
         var items = Enumerable.Range(0, 5)
             .Select(i => Item($"p{i}.jpg", Base.AddMinutes(i * 5), "Canon EOS R5"))
@@ -143,18 +143,18 @@ public sealed class SessionOutlierDetectorTests
 
         var suspect = result.FirstOrDefault(r => r.Path.Contains("suspect"));
         Assert.NotNull(suspect);
-        Assert.True(suspect!.Reasons.Count >= 2);
+        await Assert.That(suspect!.Reasons.Count >= 2).IsTrue();
     }
 
-    [Fact]
-    public void Returns_empty_for_empty_input()
+    [Test]
+    public async Task Returns_empty_for_empty_input()
     {
         var result = SessionOutlierDetector.Detect([]);
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Normal_2_hour_gap_within_session_is_not_flagged()
+    [Test]
+    public async Task Normal_2_hour_gap_within_session_is_not_flagged()
     {
         // Lunch break between shots — should not be an outlier
         var items = new[]
@@ -167,6 +167,6 @@ public sealed class SessionOutlierDetectorTests
         }.ToList();
 
         var result = SessionOutlierDetector.Detect(items);
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 }

@@ -1,7 +1,8 @@
+using System.IO;
 using System.Text;
 using OpenMcdf;
-using Xunit;
 using ArtifactView.Infrastructure.ThumbCache;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.ThumbCache;
 
@@ -102,8 +103,8 @@ public sealed class ThumbsDbReaderTests : IDisposable
 
     // ── tests ────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void ReadEntries_ValidThumbsDb_ReturnsEntries()
+    [Test]
+    public async Task ReadEntries_ValidThumbsDb_ReturnsEntries()
     {
         var path = CreateThumbsDb(
             [(1, "photo.jpg"), (2, "sunset.png")],
@@ -111,13 +112,13 @@ public sealed class ThumbsDbReaderTests : IDisposable
 
         var entries = ThumbsDbReader.ReadEntries(path);
 
-        Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => e.OriginalFilename == "photo.jpg" && e.StreamIndex == 1);
-        Assert.Contains(entries, e => e.OriginalFilename == "sunset.png" && e.StreamIndex == 2);
+        await Assert.That(entries.Count).IsEqualTo(2);
+        await Assert.That(entries).Contains(e => e.OriginalFilename == "photo.jpg" && e.StreamIndex == 1);
+        await Assert.That(entries).Contains(e => e.OriginalFilename == "sunset.png" && e.StreamIndex == 2);
     }
 
-    [Fact]
-    public void ReadEntries_ReturnsCatalogDimensions()
+    [Test]
+    public async Task ReadEntries_ReturnsCatalogDimensions()
     {
         var path = CreateThumbsDb(
             [(1, "img.jpg")],
@@ -125,15 +126,15 @@ public sealed class ThumbsDbReaderTests : IDisposable
 
         var entries = ThumbsDbReader.ReadEntries(path);
 
-        Assert.Single(entries);
+        await Assert.That(entries).HasSingleItem();
         // Dimensions come from the Catalog header (96×96 in BuildCatalog),
         // not from the individual stream header.
-        Assert.Equal(96, entries[0].Width);
-        Assert.Equal(96, entries[0].Height);
+        await Assert.That(entries[0].Width).IsEqualTo(96);
+        await Assert.That(entries[0].Height).IsEqualTo(96);
     }
 
-    [Fact]
-    public void ReadEntries_MissingCatalog_UsesStreamIndexAsName()
+    [Test]
+    public async Task ReadEntries_MissingCatalog_UsesStreamIndexAsName()
     {
         // Create a Thumbs.db with thumbnail streams but NO Catalog.
         var path = Path.GetTempFileName();
@@ -148,12 +149,12 @@ public sealed class ThumbsDbReaderTests : IDisposable
 
         var entries = ThumbsDbReader.ReadEntries(path);
 
-        Assert.Single(entries);
-        Assert.Equal("#1", entries[0].OriginalFilename);
+        await Assert.That(entries).HasSingleItem();
+        await Assert.That(entries[0].OriginalFilename).IsEqualTo("#1");
     }
 
-    [Fact]
-    public void ExtractPayload_ReturnsJpegBytes()
+    [Test]
+    public async Task ExtractPayload_ReturnsJpegBytes()
     {
         var path = CreateThumbsDb(
             [(1, "pic.jpg")],
@@ -164,13 +165,13 @@ public sealed class ThumbsDbReaderTests : IDisposable
 
         Assert.NotNull(payload);
         // Starts with JPEG SOI
-        Assert.True(payload.Length >= 3);
-        Assert.Equal(0xFF, payload[0]);
-        Assert.Equal(0xD8, payload[1]);
-        Assert.Equal(0xFF, payload[2]);
+        await Assert.That(payload.Length >= 3).IsTrue();
+        await Assert.That(payload[0]).IsEqualTo((byte)0xFF);
+        await Assert.That(payload[1]).IsEqualTo((byte)0xD8);
+        await Assert.That(payload[2]).IsEqualTo((byte)0xFF);
     }
 
-    [Fact]
+    [Test]
     public void ExtractPayload_MissingStream_ReturnsNull()
     {
         var path = CreateThumbsDb([(1, "a.jpg")], [(1, 96, 96)]);
@@ -178,19 +179,19 @@ public sealed class ThumbsDbReaderTests : IDisposable
         Assert.Null(ThumbsDbReader.ExtractPayload(path, fake));
     }
 
-    [Fact]
-    public void ReadEntries_NonExistentFile_ReturnsEmpty()
+    [Test]
+    public async Task ReadEntries_NonExistentFile_ReturnsEmpty()
     {
-        Assert.Empty(ThumbsDbReader.ReadEntries(@"C:\no_such_file_thumbs.db"));
+        await Assert.That(ThumbsDbReader.ReadEntries(@"C:\no_such_file_thumbs.db")).IsEmpty();
     }
 
-    [Fact]
-    public void ReadEntries_NotAnOleFile_ReturnsEmpty()
+    [Test]
+    public async Task ReadEntries_NotAnOleFile_ReturnsEmpty()
     {
         var path = Path.GetTempFileName();
         _tempFiles.Add(path);
         File.WriteAllBytes(path, [0x01, 0x02, 0x03]);
-        Assert.Empty(ThumbsDbReader.ReadEntries(path));
+        await Assert.That(ThumbsDbReader.ReadEntries(path)).IsEmpty();
     }
 
     // ── real Thumbs.db fixture ───────────────────────────────────────────
@@ -213,56 +214,55 @@ public sealed class ThumbsDbReaderTests : IDisposable
         return null;
     }
 
-    [SkippableFact]
-    public void ReadEntries_RealThumbsDb_ReturnsNonEmptyEntries()
+    [Test]
+    public async Task ReadEntries_RealThumbsDb_ReturnsNonEmptyEntries()
     {
         var path = FindRealThumbsDb();
-        Skip.If(path is null, "Real Thumbs.db fixture not available in this environment.");
+        Skip.When(path is null, "Real Thumbs.db fixture not available in this environment.");
 
         var entries = ThumbsDbReader.ReadEntries(path);
 
-        Assert.NotEmpty(entries);
-        Assert.All(entries, e =>
+        await Assert.That(entries).IsNotEmpty();
+        foreach (var e in entries)
         {
-            Assert.False(string.IsNullOrEmpty(e.OriginalFilename));
-            Assert.True(e.PayloadSize > 0, $"Entry {e.StreamIndex} has no payload");
-        });
+            await Assert.That(string.IsNullOrEmpty(e.OriginalFilename)).IsFalse();
+            await Assert.That(e.PayloadSize > 0).IsTrue().Because($"Entry {e.StreamIndex} has no payload");
+        }
     }
 
-    [SkippableFact]
-    public void ReadEntries_RealThumbsDb_HasLastModifiedAndVersion()
+    [Test]
+    public async Task ReadEntries_RealThumbsDb_HasLastModifiedAndVersion()
     {
         var path = FindRealThumbsDb();
-        Skip.If(path is null, "Real Thumbs.db fixture not available in this environment.");
+        Skip.When(path is null, "Real Thumbs.db fixture not available in this environment.");
 
         var entries = ThumbsDbReader.ReadEntries(path);
-        Assert.NotEmpty(entries);
+        await Assert.That(entries).IsNotEmpty();
 
         // All entries should carry the catalog version.
-        Assert.All(entries, e => Assert.True(e.CatalogVersion > 0,
-            $"Entry {e.StreamIndex} has no catalog version"));
+        await Assert.That(entries).All(e => e.CatalogVersion > 0);
 
         // At least one entry should have a valid LastModifiedUtc.
-        Assert.Contains(entries, e =>
+        await Assert.That(entries).Contains(e =>
             e.LastModifiedUtc.HasValue && e.LastModifiedUtc.Value.Year > 2000);
     }
 
-    [SkippableFact]
-    public void ExtractPayload_RealThumbsDb_ReturnsValidJpeg()
+    [Test]
+    public async Task ExtractPayload_RealThumbsDb_ReturnsValidJpeg()
     {
         var path = FindRealThumbsDb();
-        Skip.If(path is null, "Real Thumbs.db fixture not available in this environment.");
+        Skip.When(path is null, "Real Thumbs.db fixture not available in this environment.");
 
         var entries = ThumbsDbReader.ReadEntries(path);
-        Skip.If(entries.Count == 0, "No entries in Thumbs.db fixture.");
+        Skip.When(entries.Count == 0, "No entries in Thumbs.db fixture.");
 
         var payload = ThumbsDbReader.ExtractPayload(path, entries[0]);
 
         Assert.NotNull(payload);
-        Assert.True(payload.Length > 3);
+        await Assert.That(payload.Length > 3).IsTrue();
         // Must start with JPEG SOI (FF D8 FF)
-        Assert.Equal(0xFF, payload[0]);
-        Assert.Equal(0xD8, payload[1]);
-        Assert.Equal(0xFF, payload[2]);
+        await Assert.That(payload[0]).IsEqualTo((byte)0xFF);
+        await Assert.That(payload[1]).IsEqualTo((byte)0xD8);
+        await Assert.That(payload[2]).IsEqualTo((byte)0xFF);
     }
 }

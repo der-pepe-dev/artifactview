@@ -1,6 +1,7 @@
+using System.IO;
 using System.Buffers.Binary;
 using ArtifactView.Infrastructure.ThumbCache;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests;
 
@@ -47,59 +48,59 @@ public sealed class ThumbcacheReaderTests : IDisposable
         return entry;
     }
 
-    [Fact]
-    public void ReadVersion_ValidFile_ReturnsVersion()
+    [Test]
+    public async Task ReadVersion_ValidFile_ReturnsVersion()
     {
         var path = TempFile(BuildFileHeader(20));
-        Assert.Equal(20u, ThumbcacheReader.ReadVersion(path));
+        await Assert.That(ThumbcacheReader.ReadVersion(path)).IsEqualTo(20u);
     }
 
-    [Fact]
+    [Test]
     public void ReadVersion_InvalidSignature_ReturnsNull()
     {
         var path = TempFile([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07]);
         Assert.Null(ThumbcacheReader.ReadVersion(path));
     }
 
-    [Fact]
-    public void ReadEntries_SingleEntry_ReturnsOne()
+    [Test]
+    public async Task ReadEntries_SingleEntry_ReturnsOne()
     {
         var payload = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }; // fake JPEG
         var file = BuildFileHeader(20).Concat(BuildEntryV20(0x1234, payload)).ToArray();
         var path = TempFile(file);
 
         var entries = ThumbcacheReader.ReadEntries(path);
-        Assert.Single(entries);
-        Assert.Equal(0x1234ul, entries[0].Hash);
-        Assert.Equal(payload.Length, entries[0].DataSize);
+        await Assert.That(entries).HasSingleItem();
+        await Assert.That(entries[0].Hash).IsEqualTo(0x1234ul);
+        await Assert.That(entries[0].DataSize).IsEqualTo(payload.Length);
     }
 
-    [Fact]
-    public void ReadEntries_EmptyPayload_Skipped()
+    [Test]
+    public async Task ReadEntries_EmptyPayload_Skipped()
     {
         var file = BuildFileHeader(20).Concat(BuildEntryV20(0xAAAA, [])).ToArray();
         var path = TempFile(file);
 
         var entries = ThumbcacheReader.ReadEntries(path);
-        Assert.Empty(entries);
+        await Assert.That(entries).IsEmpty();
     }
 
-    [Fact]
-    public void ExtractPayload_ReturnsExactBytes()
+    [Test]
+    public async Task ExtractPayload_ReturnsExactBytes()
     {
         var payload = new byte[] { 0xAA, 0xBB, 0xCC, 0xDD };
         var file = BuildFileHeader(20).Concat(BuildEntryV20(0x5678, payload)).ToArray();
         var path = TempFile(file);
 
         var entries = ThumbcacheReader.ReadEntries(path);
-        Assert.Single(entries);
+        await Assert.That(entries).HasSingleItem();
 
         var extracted = ThumbcacheReader.ExtractPayload(path, entries[0]);
-        Assert.Equal(payload, extracted);
+        await Assert.That(extracted).IsEquivalentTo(payload);
     }
 
-    [Fact]
-    public void ReadEntries_MultipleEntries_ReturnsAll()
+    [Test]
+    public async Task ReadEntries_MultipleEntries_ReturnsAll()
     {
         var p1 = new byte[] { 0x01, 0x02 };
         var p2 = new byte[] { 0x03, 0x04, 0x05 };
@@ -110,9 +111,9 @@ public sealed class ThumbcacheReaderTests : IDisposable
         var path = TempFile(file);
 
         var entries = ThumbcacheReader.ReadEntries(path);
-        Assert.Equal(2, entries.Count);
-        Assert.Equal(1ul, entries[0].Hash);
-        Assert.Equal(2ul, entries[1].Hash);
+        await Assert.That(entries.Count).IsEqualTo(2);
+        await Assert.That(entries[0].Hash).IsEqualTo(1ul);
+        await Assert.That(entries[1].Hash).IsEqualTo(2ul);
     }
 
     // ── Win8+ format (version 21): filename embedded in each entry ───────────
@@ -134,21 +135,21 @@ public sealed class ThumbcacheReaderTests : IDisposable
         return entry;
     }
 
-    [Fact]
-    public void ReadEntries_Win8Plus_ParsesFilenameAndPayload()
+    [Test]
+    public async Task ReadEntries_Win8Plus_ParsesFilenameAndPayload()
     {
         var payload = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 };
         var file = BuildFileHeader(21).Concat(BuildEntryV21(0xABCDul, "photo.jpg", payload)).ToArray();
         var path = TempFile(file);
 
         var entries = ThumbcacheReader.ReadEntries(path);
-        Assert.Single(entries);
-        Assert.Equal(0xABCDul, entries[0].Hash);
-        Assert.Equal("photo.jpg", entries[0].CacheFileName);
-        Assert.Equal(payload.Length, entries[0].DataSize);
+        await Assert.That(entries).HasSingleItem();
+        await Assert.That(entries[0].Hash).IsEqualTo(0xABCDul);
+        await Assert.That(entries[0].CacheFileName).IsEqualTo("photo.jpg");
+        await Assert.That(entries[0].DataSize).IsEqualTo(payload.Length);
 
         var extracted = ThumbcacheReader.ExtractPayload(path, entries[0]);
-        Assert.Equal(payload, extracted);
+        await Assert.That(extracted).IsEquivalentTo(payload);
     }
 
     // ── Win10 / Win11: 32-byte file header ───────────────────────────────────
@@ -161,34 +162,33 @@ public sealed class ThumbcacheReaderTests : IDisposable
         return header;
     }
 
-    [Fact]
-    public void ReadEntries_Win10_ParsesEntryAfterWiderHeader()
+    [Test]
+    public async Task ReadEntries_Win10_ParsesEntryAfterWiderHeader()
     {
         var payload = new byte[] { 0xAA, 0xBB };
         var file = BuildFileHeaderV30(30).Concat(BuildEntryV21(0x1111ul, "img.jpg", payload)).ToArray();
         var path = TempFile(file);
 
         var entries = ThumbcacheReader.ReadEntries(path);
-        Assert.Single(entries);
-        Assert.Equal(0x1111ul, entries[0].Hash);
-        Assert.Equal(payload.Length, entries[0].DataSize);
+        await Assert.That(entries).HasSingleItem();
+        await Assert.That(entries[0].Hash).IsEqualTo(0x1111ul);
+        await Assert.That(entries[0].DataSize).IsEqualTo(payload.Length);
     }
 
-    [Fact]
-    public void ReadEntries_Win11_ParsesEntryAfterWiderHeader()
+    [Test]
+    public async Task ReadEntries_Win11_ParsesEntryAfterWiderHeader()
     {
         var payload = new byte[] { 0xCC, 0xDD, 0xEE };
         var file = BuildFileHeaderV30(32).Concat(BuildEntryV21(0x2222ul, "snap.jpg", payload)).ToArray();
         var path = TempFile(file);
 
         var entries = ThumbcacheReader.ReadEntries(path);
-        Assert.Single(entries);
-        Assert.Equal(0x2222ul, entries[0].Hash);
-        Assert.Equal("snap.jpg", entries[0].CacheFileName);
-        Assert.Equal(payload.Length, entries[0].DataSize);
+        await Assert.That(entries).HasSingleItem();
+        await Assert.That(entries[0].Hash).IsEqualTo(0x2222ul);
+        await Assert.That(entries[0].CacheFileName).IsEqualTo("snap.jpg");
+        await Assert.That(entries[0].DataSize).IsEqualTo(payload.Length);
 
         var extracted = ThumbcacheReader.ExtractPayload(path, entries[0]);
-        Assert.Equal(payload, extracted);
+        await Assert.That(extracted).IsEquivalentTo(payload);
     }
 }
-

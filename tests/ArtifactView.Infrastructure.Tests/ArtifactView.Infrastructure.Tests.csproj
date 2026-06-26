@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <AssemblyName>ArtifactView.Infrastructure.Tests</AssemblyName>
     <RootNamespace>ArtifactView.Infrastructure.Tests</RootNamespace>
@@ -10,11 +11,8 @@
     <PackageReference Include="DiscUtils.Core" Version="0.16.13" />
     <PackageReference Include="DiscUtils.Fat" Version="0.16.13" />
     <PackageReference Include="DiscUtils.Ntfs" Version="0.16.13" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="OpenMcdf" Version="3.1.3" />
-    <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Xunit.SkippableFact" Version="1.4.13" />
+    <PackageReference Include="TUnit" Version="1.56.35" />
   </ItemGroup>
 
   <ItemGroup>

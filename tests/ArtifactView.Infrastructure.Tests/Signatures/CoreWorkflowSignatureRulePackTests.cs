@@ -1,6 +1,6 @@
 using ArtifactView.Contracts.Signatures;
 using ArtifactView.Infrastructure.Signatures;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Signatures;
 
@@ -20,90 +20,90 @@ public sealed class CoreWorkflowSignatureRulePackTests
         public IReadOnlyList<string> Capabilities { get; init; } = [];
     }
 
-    [Fact]
-    public void Returns_empty_for_no_signals()
+    [Test]
+    public async Task Returns_empty_for_no_signals()
     {
         var results = _pack.Match(new Ctx());
-        Assert.Empty(results);
+        await Assert.That(results).IsEmpty();
     }
 
-    [Fact]
-    public void Detects_google_pixel_from_camera_model()
+    [Test]
+    public async Task Detects_google_pixel_from_camera_model()
     {
         var results = _pack.Match(new Ctx { CameraModel = "Google Pixel 7" });
-        Assert.Contains(results, r => r.ProfileId == "platform.google-pixel");
+        await Assert.That(results).Contains(r => r.ProfileId == "platform.google-pixel");
     }
 
-    [Fact]
-    public void Detects_google_pixel_strong_when_model_and_gps()
+    [Test]
+    public async Task Detects_google_pixel_strong_when_model_and_gps()
     {
         var results = _pack.Match(new Ctx { CameraModel = "Google Pixel 8", HasGpsData = true });
-        var match = Assert.Single(results, r => r.ProfileId == "platform.google-pixel");
-        Assert.Equal(MatchStrength.Strong, match.Strength);
+        var match = await Assert.That(results).HasSingleItem();
+        await Assert.That(match.Strength).IsEqualTo(MatchStrength.Strong);
     }
 
-    [Fact]
-    public void Detects_iphone_from_camera_model()
+    [Test]
+    public async Task Detects_iphone_from_camera_model()
     {
         var results = _pack.Match(new Ctx { CameraModel = "Apple iPhone 15 Pro" });
-        Assert.Contains(results, r => r.ProfileId == "platform.apple-iphone");
+        await Assert.That(results).Contains(r => r.ProfileId == "platform.apple-iphone");
     }
 
-    [Fact]
-    public void Detects_samsung_from_model_prefix()
+    [Test]
+    public async Task Detects_samsung_from_model_prefix()
     {
         var results = _pack.Match(new Ctx { CameraModel = "SM-S918B" });
-        Assert.Contains(results, r => r.ProfileId == "platform.samsung-galaxy");
+        await Assert.That(results).Contains(r => r.ProfileId == "platform.samsung-galaxy");
     }
 
-    [Fact]
-    public void Detects_instagram_from_software_tag()
+    [Test]
+    public async Task Detects_instagram_from_software_tag()
     {
         var results = _pack.Match(new Ctx { SoftwareTag = "Instagram 300.0.0" });
-        Assert.Contains(results, r => r.ProfileId == "workflow.instagram");
-        Assert.All(results.Where(r => r.ProfileId == "workflow.instagram"),
-            r => Assert.Equal(MatchStrength.Strong, r.Strength));
+        await Assert.That(results).Contains(r => r.ProfileId == "workflow.instagram");
+        foreach (var r in results.Where(r => r.ProfileId == "workflow.instagram"))
+            await Assert.That(r.Strength).IsEqualTo(MatchStrength.Strong);
     }
 
-    [Fact]
-    public void Detects_whatsapp_from_software_tag()
+    [Test]
+    public async Task Detects_whatsapp_from_software_tag()
     {
         var results = _pack.Match(new Ctx { SoftwareTag = "WhatsApp" });
-        Assert.Contains(results, r => r.ProfileId == "workflow.whatsapp");
+        await Assert.That(results).Contains(r => r.ProfileId == "workflow.whatsapp");
     }
 
-    [Fact]
-    public void Detects_photoshop_editing_workflow()
+    [Test]
+    public async Task Detects_photoshop_editing_workflow()
     {
         var results = _pack.Match(new Ctx { SoftwareTag = "Adobe Photoshop CC 2024" });
-        Assert.Contains(results, r => r.ProfileId == "workflow.photoshop");
-        Assert.Equal(MatchStrength.Strong, results.First(r => r.ProfileId == "workflow.photoshop").Strength);
+        await Assert.That(results).Contains(r => r.ProfileId == "workflow.photoshop");
+        await Assert.That(results.First(r => r.ProfileId == "workflow.photoshop").Strength).IsEqualTo(MatchStrength.Strong);
     }
 
-    [Fact]
-    public void Detects_lightroom_editing_workflow()
+    [Test]
+    public async Task Detects_lightroom_editing_workflow()
     {
         var results = _pack.Match(new Ctx { SoftwareTag = "Adobe Lightroom 7.0" });
-        Assert.Contains(results, r => r.ProfileId == "workflow.lightroom");
+        await Assert.That(results).Contains(r => r.ProfileId == "workflow.lightroom");
     }
 
-    [Fact]
-    public void Detects_snapseed_editing_workflow()
+    [Test]
+    public async Task Detects_snapseed_editing_workflow()
     {
         var results = _pack.Match(new Ctx { SoftwareTag = "Snapseed" });
-        Assert.Contains(results, r => r.ProfileId == "workflow.snapseed");
+        await Assert.That(results).Contains(r => r.ProfileId == "workflow.snapseed");
     }
 
-    [Fact]
-    public void Detects_screenshot_explicit_software_tag()
+    [Test]
+    public async Task Detects_screenshot_explicit_software_tag()
     {
         var results = _pack.Match(new Ctx { SoftwareTag = "Screenshot" });
-        var match = Assert.Single(results, r => r.ProfileId == "workflow.screenshot");
-        Assert.Equal(MatchStrength.Strong, match.Strength);
+        var match = await Assert.That(results).HasSingleItem();
+        await Assert.That(match.Strength).IsEqualTo(MatchStrength.Strong);
     }
 
-    [Fact]
-    public void Detects_screenshot_weak_from_iphone_dimensions_no_camera()
+    [Test]
+    public async Task Detects_screenshot_weak_from_iphone_dimensions_no_camera()
     {
         var results = _pack.Match(new Ctx
         {
@@ -111,12 +111,12 @@ public sealed class CoreWorkflowSignatureRulePackTests
             ImageHeight = 2532,
             HasGpsData  = false
         });
-        var match = Assert.Single(results, r => r.ProfileId == "workflow.screenshot");
-        Assert.Equal(MatchStrength.Weak, match.Strength);
+        var match = await Assert.That(results).HasSingleItem();
+        await Assert.That(match.Strength).IsEqualTo(MatchStrength.Weak);
     }
 
-    [Fact]
-    public void Does_not_flag_screenshot_when_camera_model_present()
+    [Test]
+    public async Task Does_not_flag_screenshot_when_camera_model_present()
     {
         var results = _pack.Match(new Ctx
         {
@@ -124,11 +124,11 @@ public sealed class CoreWorkflowSignatureRulePackTests
             ImageWidth  = 1170,
             ImageHeight = 2532
         });
-        Assert.DoesNotContain(results, r => r.ProfileId == "workflow.screenshot");
+        await Assert.That(results).DoesNotContain(r => r.ProfileId == "workflow.screenshot");
     }
 
-    [Fact]
-    public void Does_not_flag_screenshot_when_gps_present()
+    [Test]
+    public async Task Does_not_flag_screenshot_when_gps_present()
     {
         var results = _pack.Match(new Ctx
         {
@@ -136,22 +136,22 @@ public sealed class CoreWorkflowSignatureRulePackTests
             ImageHeight = 2532,
             HasGpsData  = true
         });
-        Assert.DoesNotContain(results, r => r.ProfileId == "workflow.screenshot");
+        await Assert.That(results).DoesNotContain(r => r.ProfileId == "workflow.screenshot");
     }
 
-    [Fact]
-    public void Pack_has_expected_id_and_version()
+    [Test]
+    public async Task Pack_has_expected_id_and_version()
     {
-        Assert.Equal("core.sig.workflow-core", _pack.Id);
-        Assert.False(string.IsNullOrEmpty(_pack.Version));
+        await Assert.That(_pack.Id).IsEqualTo("core.sig.workflow-core");
+        await Assert.That(string.IsNullOrEmpty(_pack.Version)).IsFalse();
     }
 
-    [Fact]
-    public void Social_match_takes_priority_over_editing_for_mixed_tag()
+    [Test]
+    public async Task Social_match_takes_priority_over_editing_for_mixed_tag()
     {
         // Instagram tag should match social, not editing workflow.
         var results = _pack.Match(new Ctx { SoftwareTag = "Instagram" });
-        Assert.Contains(results, r => r.ProfileId == "workflow.instagram");
-        Assert.DoesNotContain(results, r => r.ProfileId.StartsWith("workflow.photoshop"));
+        await Assert.That(results).Contains(r => r.ProfileId == "workflow.instagram");
+        await Assert.That(results).DoesNotContain(r => r.ProfileId.StartsWith("workflow.photoshop"));
     }
 }
