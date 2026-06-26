@@ -211,10 +211,10 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
 
         try
         {
-            using var ms    = new MemoryStream(payload);
-            var       dec   = BitmapDecoder.Create(ms, BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.OnLoad);
-            var       frame = dec.Frames[0];
-            frame.Freeze();
+            using var ms = new MemoryStream(payload);
+            // Use the shared decoder so carved photos get EXIF-orientation handling,
+            // identical to the normal file path.
+            var frame = ImageDecoder.Decode(ms);
 
             if (token.IsCancellationRequested) return;
 
