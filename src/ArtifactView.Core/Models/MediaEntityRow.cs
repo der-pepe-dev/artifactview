@@ -99,6 +99,10 @@ public sealed class MediaEntityRow : INotifyPropertyChanged
     public string DiskImageInternalPath { get; init; } = string.Empty;
     public string DiskImageFilesystem   { get; init; } = string.Empty;
 
+    // For DELETED NTFS files: the $MFT record number used to recover bytes on demand.
+    // -1 when not a recoverable deleted entry.
+    public long DeletedMftRecordNumber { get; init; } = -1;
+
     public string PresenceState
     {
         get => _presenceState;

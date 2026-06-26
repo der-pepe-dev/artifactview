@@ -24,6 +24,12 @@ artifact source is deferred. See [[roadmap]] for phase detail.
 
 <!-- Append dated notes here, newest first: -->
 <!-- - YYYY-MM-DD: ... -->
+- 2026-06-27: Deleted NTFS files now viewable (best-effort undelete). `NtfsDeletedFileRecovery`
+  parses the deleted MFT record's `$DATA` (resident + non-resident data runs, fixups) and
+  `DiskImagePartitionReader.ReadDeletedFileBytes` reads the clusters raw; viewer decodes them
+  (flagged best-effort — clusters may be reused). Compressed/encrypted out of scope. FAT/exFAT
+  deleted still pending (no DiscUtils support). Recovery logic unit-tested with synthetic MFT
+  records (real NTFS format unavailable on Linux). See [[tasks/done/view-deleted-file]].
 - 2026-06-27: Viewer can now open disk-image LIVE files and carved artifacts.
   `DiskImagePartitionReader.ReadFileBytes` (DiscUtils OpenFile) + `MediaEntityRow`
   DiskImage*/Carved* byte-source fields + `ViewerViewModel` branches +

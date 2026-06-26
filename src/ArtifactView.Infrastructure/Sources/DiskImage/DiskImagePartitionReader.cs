@@ -24,7 +24,10 @@ public static class DiskImagePartitionReader
         DateTime? ModifiedUtc,
         string Filesystem,
         int PartitionIndex,
-        bool IsDeleted
+        bool IsDeleted,
+        // For deleted NTFS files: the $MFT record number, used to recover bytes via
+        // ReadDeletedFileBytes. -1 for live files and non-recoverable entries.
+        long MftRecordNumber = -1
     );
 
     // Opens a raw .dd/.img disk image and enumerates all media files across all partitions.
@@ -142,6 +145,82 @@ public static class DiskImagePartitionReader
         return buf;
     }
 
+    // Best-effort recovery of a DELETED NTFS file's bytes via its $MFT record number
+    // (from ReadAllMediaFiles). Returns null when the data is non-recoverable
+    // (compressed/encrypted, truncated, or the record/partition can't be read). Recovered
+    // bytes may be stale if the clusters were reallocated since deletion.
+    public static byte[]? ReadDeletedFileBytes(
+        string imagePath, int partitionIndex, long mftRecordNumber, long maxBytes = 512L * 1024 * 1024)
+    {
+        if (mftRecordNumber < 0) return null;
+        try
+        {
+            using var fsMeta = new System.IO.FileStream(
+                imagePath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
+            using var disk = new Disk(fsMeta, Ownership.None);
+            var partitions = TryGetPartitions(disk);
+            int bps = disk.Geometry.BytesPerSector;
+
+            long partitionBaseByte;
+            System.IO.Stream volStream;
+            System.IO.Stream? ownedVol = null;
+            if (partitions.Count == 0)
+            {
+                partitionBaseByte = 0;
+                fsMeta.Seek(0, System.IO.SeekOrigin.Begin);
+                volStream = fsMeta;
+            }
+            else
+            {
+                if (partitionIndex < 0 || partitionIndex >= partitions.Count) return null;
+                partitionBaseByte = partitions[partitionIndex].FirstSector * (long)bps;
+                ownedVol = partitions[partitionIndex].Open();
+                volStream = ownedVol;
+            }
+
+            try
+            {
+                // Cluster size from the NTFS boot sector (BPB).
+                volStream.Seek(0, System.IO.SeekOrigin.Begin);
+                var boot = new byte[512];
+                if (ReadFully(volStream, boot, 0, boot.Length) != boot.Length) return null;
+                int clusterSize = NtfsClusterSize(boot);
+                if (clusterSize <= 0) return null;
+
+                // Read MFT record N via NtfsFileSystem so MFT fragmentation is handled.
+                volStream.Seek(0, System.IO.SeekOrigin.Begin);
+                if (!NtfsFileSystem.Detect(volStream)) return null;
+                volStream.Seek(0, System.IO.SeekOrigin.Begin);
+
+                var recordBytes = new byte[1024];
+                using (var ntfs = new NtfsFileSystem(volStream))
+                using (var mft = ntfs.OpenFile(@"\$MFT", System.IO.FileMode.Open, System.IO.FileAccess.Read))
+                {
+                    long off = mftRecordNumber * 1024L;
+                    if (off + 1024 > mft.Length) return null;
+                    mft.Seek(off, System.IO.SeekOrigin.Begin);
+                    if (ReadFully(mft, recordBytes, 0, recordBytes.Length) != recordBytes.Length) return null;
+                }
+                NtfsDeletedFileRecovery.ApplyFixup(recordBytes);
+
+                // Read data clusters from a separate raw stream (image-absolute offsets).
+                using var fsData = new System.IO.FileStream(
+                    imagePath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
+                return NtfsDeletedFileRecovery.Recover(fsData, partitionBaseByte, clusterSize, recordBytes, maxBytes);
+            }
+            finally { ownedVol?.Dispose(); }
+        }
+        catch { return null; }
+    }
+
+    private static int NtfsClusterSize(byte[] boot)
+    {
+        int bytesPerSector = boot[0x0B] | (boot[0x0C] << 8);
+        sbyte spc = (sbyte)boot[0x0D];
+        int sectorsPerCluster = spc >= 0 ? spc : 1 << (-spc);
+        return bytesPerSector * sectorsPerCluster;
+    }
+
     private static IReadOnlyList<PartitionInfo> TryGetPartitions(Disk disk)
     {
         // Try MBR first, then GPT.
@@ -234,10 +313,12 @@ public static class DiskImagePartitionReader
             using var mftStream = ntfs.OpenFile(@"\$MFT", System.IO.FileMode.Open, System.IO.FileAccess.Read);
 
             var record = new byte[1024];
+            long recordNumber = -1;
             while (true)
             {
                 var read = ReadFully(mftStream, record, 0, record.Length);
                 if (read < record.Length) break;
+                recordNumber++; // sequential $MFT record index for this 1024-byte slot
 
                 // Signature must be "FILE".
                 if (record[0] != 'F' || record[1] != 'I' || record[2] != 'L' || record[3] != 'E')
@@ -262,8 +343,14 @@ public static class DiskImagePartitionReader
                     StringComparison.OrdinalIgnoreCase) && !r.IsDeleted))
                     continue;
 
+                // Recover the real size from the $DATA attribute (after applying fixups);
+                // the record number lets the viewer recover the bytes on demand.
+                NtfsDeletedFileRecovery.ApplyFixup(record);
+                var size = NtfsDeletedFileRecovery.ParseDataAttribute(record)?.RealSize ?? 0;
+
                 results.Add(new DiskImageFileEntry(
-                    logicalPath, 0, null, null, "NTFS", partIndex, IsDeleted: true));
+                    logicalPath, size, null, null, "NTFS", partIndex, IsDeleted: true,
+                    MftRecordNumber: recordNumber));
             }
         }
         catch { }
