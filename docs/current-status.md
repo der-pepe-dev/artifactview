@@ -16,13 +16,18 @@ artifact source is deferred. See [[roadmap]] for phase detail.
 
 - Tests run on WSL2 with `net10.0-windows`; GDI+ and DiscUtils have known
   limitations — see [[instructions/coding-and-testing]].
-- Carving (CarvedArtifactSource) not yet implemented.
+- Carving (CarvedArtifactSource): v1 done (JPEG+PNG, in-memory). Streaming for multi-GB
+  images and more formats (GIF/BMP/TIFF/MP4/HEIF) not yet implemented.
 - Video (Phase 9) and premium plugin ecosystem (Phase 10) are future work.
 
 ## Recent notes
 
 <!-- Append dated notes here, newest first: -->
 <!-- - YYYY-MM-DD: ... -->
+- 2026-06-26: Carved artifact source v1 implemented — `SignatureCarver` (JPEG+PNG signature
+  carving, segment/chunk-walked end detection) + `CarvedArtifactSourceProvider`/`Session`
+  (carved-range `OpenReadAsync`). In-memory scan; streaming for multi-GB images and more
+  formats are follow-ups. See [[tasks/done/carved-artifact-source]].
 - 2026-06-26: Test suite migrated from xUnit to **TUnit** (Microsoft.Testing.Platform).
   All 3 projects: Core 13, Application 26, Infrastructure 381 + 8 skipped — 0 failed.
   `dotnet test` runs in MTP mode via root `global.json`; needs `--solution`/`--project`.
