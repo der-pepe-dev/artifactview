@@ -1,0 +1,21 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+*.db
+*.sqlite
+*.sqlite3
+artifacts/
+exports/
+cache/
+TestResults/
+
+# Per-machine environment snapshot (regenerate locally via scripts/snapshot-environment.sh)
+docs/environment.md
+
+# Obsidian app config (if docs/ is opened as a vault)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/

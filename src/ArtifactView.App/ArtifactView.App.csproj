@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>ArtifactView.App</AssemblyName>
+    <RootNamespace>ArtifactView.App</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ArtifactView.Application\ArtifactView.Application.csproj" />
+    <ProjectReference Include="..\ArtifactView.Core\ArtifactView.Core.csproj" />
+    <ProjectReference Include="..\ArtifactView.Contracts\ArtifactView.Contracts.csproj" />
+    <ProjectReference Include="..\ArtifactView.Infrastructure\ArtifactView.Infrastructure.csproj" />
+    <ProjectReference Include="..\ArtifactView.Plugins.Abstractions\ArtifactView.Plugins.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Effects\InvertColor.ps" />
+    <None Include="Effects\InvertColor.fx" />
+  </ItemGroup>
+
+</Project>

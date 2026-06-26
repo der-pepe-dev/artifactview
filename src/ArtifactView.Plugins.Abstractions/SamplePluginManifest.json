@@ -1,0 +1,12 @@
+{
+  "Id": "artifactview.sample.openplugin",
+  "Name": "Sample Open Plugin",
+  "Version": "0.1.0",
+  "Author": "der",
+  "License": "MIT",
+  "IsOpenSource": true,
+  "Homepage": "https://example.invalid",
+  "Capabilities": ["processor:compare", "analyzer:metadata"],
+  "RequiresNativeCode": false,
+  "SignatureInfo": "unsigned-sample"
+}

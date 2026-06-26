@@ -1,0 +1,1743 @@
+<Window x:Class="ArtifactView.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:conv="clr-namespace:ArtifactView.App.Converters"
+        mc:Ignorable="d"
+        Title="{Binding WindowTitle}"
+        Height="900"
+        Width="1500"
+        MinHeight="700"
+        MinWidth="1100"
+        AllowDrop="True"
+        Drop="OnDrop">
+
+    <Window.Resources>
+        <conv:FilmstripImageConverter x:Key="FilmstripImageConverter" />
+        <conv:NullOrEmptyToVisibilityConverter x:Key="NullOrEmptyToCollapsed" />
+    </Window.Resources>
+
+    <Window.InputBindings>
+        <KeyBinding Command="{Binding OpenFolderCommand}" Key="O" Modifiers="Ctrl"/>
+        <KeyBinding Command="{Binding RefreshCommand}"    Key="F5"/>
+        <KeyBinding Command="{Binding NavigateUpCommand}"  Key="Back"/>
+        <KeyBinding Command="{Binding ExportReportCommand}"            Key="E" Modifiers="Ctrl"/>
+        <KeyBinding Command="{Binding ExportProvenanceSidecarCommand}" Key="E" Modifiers="Ctrl+Shift"/>
+        <KeyBinding Command="{Binding ToggleGroupByDateCommand}" Key="G" Modifiers="Ctrl"/>
+        <KeyBinding Command="{Binding CompareSelectedCommand}"   Key="K" Modifiers="Ctrl"/>
+    </Window.InputBindings>
+
+    <DockPanel>
+        <ToolBar DockPanel.Dock="Top">
+            <Button Content="Open Folder" Command="{Binding OpenFolderCommand}" />
+            <Button Content="Open iPhone Backup…" Command="{Binding OpenIPhoneBackupCommand}"
+                    ToolTip="Browse an iTunes or Apple Devices iPhone backup" />
+            <Button Content="Open Disk Image…" Command="{Binding OpenDiskImageCommand}"
+                    ToolTip="Browse a raw disk image (.dd, .img, .raw) — enumerates live and deleted files" />
+            <Separator />
+            <Button Content="Refresh" Command="{Binding RefreshCommand}" />
+            <!-- Investigate / Export / Plugins: enabled in later phases -->
+            <Button Content="Analyze Selected" Command="{Binding AnalyzeSelectedCommand}" />
+            <Button Content="Investigate"      IsEnabled="False" />
+            <Separator />
+            <Button Content="Export Report" Command="{Binding ExportReportCommand}" />
+            <Button Content="Save Provenance JSON"
+                    Command="{Binding ExportProvenanceSidecarCommand}"
+                    ToolTip="Save a .avmeta.json sidecar alongside the source file (Ctrl+Shift+E)" />
+            <Button Content="Plugins" Command="{Binding ShowPluginsCommand}" />
+            <Separator />
+            <ToggleButton Content="Group by Date"
+                          IsChecked="{Binding IsGroupedByDate, Mode=OneWay}"
+                          Command="{Binding ToggleGroupByDateCommand}"
+                          ToolTip="Group media items by capture date (Ctrl+G)"
+                          Padding="6,2" />
+            <ToggleButton Content="Filmstrip"
+                          IsChecked="{Binding IsFilmstripVisible, Mode=OneWay}"
+                          Command="{Binding ToggleFilmstripCommand}"
+                          ToolTip="Toggle filmstrip panel"
+                          Padding="6,2" />
+            <Separator />
+            <Button Content="&#x1F4CC; Pin for Compare"
+                    Command="{Binding PinForCompareCommand}"
+                    ToolTip="Pin selected item for side-by-side comparison" />
+            <Button Content="Compare"
+                    Command="{Binding CompareSelectedCommand}"
+                    ToolTip="Compare pinned item with current selection (Ctrl+K)" />
+        </ToolBar>
+
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem Content="{Binding StatusText}" />
+            <Separator />
+            <StatusBarItem Content="{Binding PinBadgeText}" FontSize="11">
+                <StatusBarItem.Style>
+                    <Style TargetType="StatusBarItem">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding PinnedItem}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StatusBarItem.Style>
+            </StatusBarItem>
+            <Separator>
+                <Separator.Style>
+                    <Style TargetType="Separator">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding PinnedItem}" Value="{x:Null}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Separator.Style>
+            </Separator>
+            <StatusBarItem>
+                <StatusBarItem.Style>
+                    <Style TargetType="StatusBarItem">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsEnriching}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StatusBarItem.Style>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Enriching&#x2026;" FontSize="11" Opacity="0.6" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <ProgressBar Width="120" Height="10" Minimum="0" Maximum="100"
+                                 Value="{Binding EnrichmentProgress, Mode=OneWay}"
+                                 VerticalAlignment="Center" />
+                </StackPanel>
+            </StatusBarItem>
+        </StatusBar>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2.6*" MinWidth="160" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="2.8*" MinWidth="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ═══ Media Grid ═══ -->
+            <GroupBox Grid.Row="0" Grid.Column="0" Grid.RowSpan="3" Header="Media Grid" Margin="6">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Path bar with navigate-up button -->
+                    <Border Grid.Row="0"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                            Padding="4,2">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0"
+                                    Content="&#x2191;"
+                                    Command="{Binding NavigateUpCommand}"
+                                    ToolTip="Parent folder (Backspace)"
+                                    Padding="5,2" Margin="0,0,4,0" MinWidth="0"
+                                    FontSize="11" BorderThickness="0"
+                                    Background="Transparent"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding CurrentFolderPath, FallbackValue='No folder open'}"
+                                       FontSize="11"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding CurrentFolderPath}"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Search bar -->
+                    <Border Grid.Row="1"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                            Padding="2,1">
+                        <Grid>
+                            <TextBox x:Name="SearchBox"
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     BorderThickness="0"
+                                     Padding="4,2"
+                                     FontSize="11"
+                                     VerticalContentAlignment="Center"
+                                     Background="Transparent" />
+                            <!-- Placeholder text: visible when SearchText is empty -->
+                            <TextBlock Text="Search by name..."
+                                       FontSize="11" Opacity="0.38"
+                                       Margin="6,0,0,0" VerticalAlignment="Center"
+                                       IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SearchText}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <!-- Clear button: hidden when SearchText is empty -->
+                            <Button HorizontalAlignment="Right"
+                                    Width="20" Height="20" Margin="0,0,2,0"
+                                    Content="x" FontSize="10"
+                                    Command="{Binding ClearSearchCommand}"
+                                    BorderThickness="0"
+                                    Background="Transparent"
+                                    Cursor="Arrow">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SearchText}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- File-browser grid -->
+                    <DataGrid Grid.Row="2"
+                              x:Name="MediaGrid"
+                              ItemsSource="{Binding Items}"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              IsReadOnly="True"
+                              HeadersVisibility="Column"
+                              SelectionMode="Single"
+                              GridLinesVisibility="None"
+                              BorderThickness="0"
+                              RowHeight="24"
+                              SelectedItem="{Binding SelectedItem}"
+                              MouseDoubleClick="MediaGrid_MouseDoubleClick"
+                              Sorting="MediaGrid_Sorting">
+
+                        <DataGrid.GroupStyle>
+                            <GroupStyle>
+                                <GroupStyle.HeaderTemplate>
+                                    <DataTemplate>
+                                        <Border Padding="6,3"
+                                                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                                                BorderThickness="0,0,0,1"
+                                                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Name}"
+                                                           FontWeight="SemiBold"
+                                                           FontSize="11" />
+                                                <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}"
+                                                           FontSize="11"
+                                                           Opacity="0.6" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </GroupStyle.HeaderTemplate>
+                            </GroupStyle>
+                        </DataGrid.GroupStyle>
+
+                        <!-- Remove per-cell borders and the dotted keyboard-focus rectangle. -->
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="BorderThickness"  Value="0" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                <Setter Property="Padding"          Value="4,0" />
+                            </Style>
+                        </DataGrid.CellStyle>
+
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDirectory}" Value="True">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+
+                        <!-- Right-click any column header to show/hide columns. -->
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="ContextMenu">
+                                    <Setter.Value>
+                                        <ContextMenu Opened="ColumnHeaderMenu_Opened" />
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
+
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Open in Explorer" Command="{Binding OpenInExplorerCommand}" />
+                                <MenuItem Header="Copy Path" Command="{Binding CopyPathCommand}" />
+                                <Separator />
+                                <MenuItem Header="Analyze" Command="{Binding AnalyzeSelectedCommand}" />
+                                <MenuItem Header="Export Report&#x2026;" Command="{Binding ExportReportCommand}" />
+                                <MenuItem Header="Save Provenance JSON" Command="{Binding ExportProvenanceSidecarCommand}" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header=""           Binding="{Binding ItemIcon}"          Width="26" IsReadOnly="True" CanUserSort="False" />
+                            <DataGridTextColumn Header="Name"       Binding="{Binding DisplayName}"       Width="2*" SortMemberPath="DisplayName" />
+                            <DataGridTextColumn Header="Size"       Binding="{Binding FileSizeText}"      Width="*"  SortMemberPath="FileSizeBytes" />
+                            <DataGridTextColumn Header="Presence"   Binding="{Binding PresenceState}"     Width="*"  SortMemberPath="PresenceState" />
+                            <DataGridTextColumn Header="Source"     Binding="{Binding PrimarySourceType}" Width="*"  SortMemberPath="PrimarySourceType" />
+                            <DataGridTextColumn Header="Dimensions" Binding="{Binding ResolutionText}"    Width="*"  SortMemberPath="ResolutionText" />
+                            <DataGridTextColumn Header="Date"       Binding="{Binding PreferredDateText}" Width="*"  SortMemberPath="PreferredDateText" />
+                            <DataGridTextColumn Header="Camera"     Binding="{Binding CameraModel}"       Width="*"  SortMemberPath="CameraModel" />
+                            <DataGridTextColumn Header="Format"     Binding="{Binding DetectedFormat}"   Width="60"  SortMemberPath="DetectedFormat" />
+                            <DataGridTextColumn Header="Dup"        Binding="{Binding DuplicateCount}"    Width="40"  SortMemberPath="DuplicateCount" />
+                            <DataGridTextColumn Header="Workflow"   Binding="{Binding WorkflowBadge}"     Width="*"  SortMemberPath="WorkflowBadge" />
+                            <DataGridTextColumn Header="Findings"   Binding="{Binding FindingsText}"      Width="*"  SortMemberPath="FindingsText" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Filmstrip: horizontal thumbnail strip, collapsible -->
+                    <Border Grid.Row="3"
+                            BorderThickness="0,1,0,0"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFilmstripVisible}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <ListBox x:Name="FilmstripListBox"
+                                 ItemsSource="{Binding Items}"
+                                 SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                                 Height="84"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 BorderThickness="0"
+                                 Background="Black"
+                                 SelectionChanged="FilmstripListBox_SelectionChanged">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <VirtualizingStackPanel Orientation="Horizontal"
+                                                            VirtualizationMode="Recycling" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Padding" Value="1" />
+                                    <Setter Property="Margin"  Value="1,2" />
+                                    <Setter Property="BorderThickness" Value="2" />
+                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter Property="BorderBrush" Value="#FF4CAF50" />
+                                            <Setter Property="Background"  Value="Transparent" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Width="60" Height="72">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="60" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <!-- Thumbnail image or placeholder -->
+                                        <Border Grid.Row="0" Background="#222">
+                                            <Image Source="{Binding Converter={StaticResource FilmstripImageConverter}}"
+                                                   Stretch="Uniform"
+                                                   RenderOptions.BitmapScalingMode="LowQuality" />
+                                        </Border>
+                                        <!-- Filename label -->
+                                        <TextBlock Grid.Row="1"
+                                                   Text="{Binding DisplayName}"
+                                                   FontSize="8"
+                                                   Foreground="#AAA"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   HorizontalAlignment="Center"
+                                                   ToolTip="{Binding DisplayName}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </Grid>
+            </GroupBox>
+
+            <!-- Splitter: grid | right panel -->
+            <GridSplitter Grid.Column="1" Grid.RowSpan="1"
+                          Width="5" HorizontalAlignment="Stretch"
+                          Background="Transparent"
+                          ResizeBehavior="PreviousAndNext" />
+
+            <!-- ═══ Right panel: Preview + Detail Tabs ═══ -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="2*" MinHeight="100" />
+                    <RowDefinition Height="5" />
+                    <RowDefinition Height="3*" MinHeight="140" />
+                </Grid.RowDefinitions>
+
+                <!-- ── Preview (always Fit, no 1:1 toggle) ── -->
+                <GroupBox Grid.Row="0" Header="Preview" Margin="6">
+                    <Grid>
+
+                        <!-- Filename overlay: bottom-left, visible when an image is loaded -->
+                        <TextBlock Text="{Binding SelectedItem.DisplayName}"
+                                   VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                   FontSize="10" Opacity="0.55"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="4,0,4,4"
+                                   Panel.ZIndex="1">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Viewer.HasImage}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Dimensions overlay: bottom-right -->
+                        <TextBlock Text="{Binding Viewer.DimensionsText}"
+                                   VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                   FontSize="10" Opacity="0.55"
+                                   Margin="4,0,4,4"
+                                   Panel.ZIndex="1">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Viewer.HasImage}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Hint: shown until an image loads -->
+                        <TextBlock Text="Select a media file to preview"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Viewer.HasImage}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Viewer.HasLoadError}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Load-error text -->
+                        <TextBlock Text="{Binding Viewer.LoadError}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="Salmon" TextWrapping="Wrap" Margin="10">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Viewer.HasLoadError}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Image: always Fit mode -->
+                        <Image Source="{Binding Viewer.Source}"
+                               Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="{Binding Viewer.ScalingMode}" />
+
+                        <!-- Ghost preview badge -->
+                        <Border HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                Background="#CC000000" Padding="6,3" Margin="4">
+                            <TextBlock Text="&#x1F47B; Cached thumbnail &#x2014; original file not found"
+                                       Foreground="White" FontSize="10" Opacity="0.85" />
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Viewer.IsGhostPreview}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                        </Border>
+
+                    </Grid>
+                </GroupBox>
+
+                <!-- Splitter: preview | tabs -->
+                <GridSplitter Grid.Row="1"
+                              Height="5" HorizontalAlignment="Stretch"
+                              Background="Transparent"
+                              ResizeBehavior="PreviousAndNext" />
+
+                <!-- ── Detail Tabs ── -->
+                <TabControl Grid.Row="2" Margin="6">
+
+                    <!-- Summary (includes Evidence Sources at the bottom) -->
+                    <TabItem Header="Summary">
+                        <Grid>
+
+                        <!-- No-selection hint -->
+                        <TextBlock Text="Select an item to view details."
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedItem}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Directory hint -->
+                        <TextBlock Text="Directory - double-click to enter."
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedItem.IsDirectory}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Item summary - visible by default, hidden for null / directories -->
+                        <ScrollViewer>
+                            <ScrollViewer.Style>
+                                <Style TargetType="ScrollViewer">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedItem}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedItem.IsDirectory}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ScrollViewer.Style>
+                            <StackPanel Margin="10">
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding SelectedItem.ItemIcon}"
+                                               FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding SelectedItem.DisplayName}"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               TextWrapping="Wrap" VerticalAlignment="Center" />
+                                </StackPanel>
+
+                                <Separator Margin="0,0,0,8" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition MinHeight="22" />
+                                        <RowDefinition MinHeight="22" />
+                                        <RowDefinition MinHeight="22" />
+                                        <RowDefinition MinHeight="22" />
+                                        <RowDefinition MinHeight="22" />
+                                        <RowDefinition MinHeight="22" />
+                                        <RowDefinition MinHeight="0"  />
+                                        <RowDefinition MinHeight="22" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Presence"   Opacity="0.55" Margin="0,0,14,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedItem.PresenceState}"     VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Source"     Opacity="0.55" Margin="0,0,14,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedItem.PrimarySourceType}" VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Dimensions" Opacity="0.55" Margin="0,0,14,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedItem.ResolutionText}"    VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Size"       Opacity="0.55" Margin="0,0,14,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedItem.FileSizeText}"      VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Date"       Opacity="0.55" Margin="0,0,14,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedItem.PreferredDateText}" VerticalAlignment="Center" />
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="Camera"     Opacity="0.55" Margin="0,0,14,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedItem.CameraModel}"       VerticalAlignment="Center" />
+
+                                    <!-- GPS row: collapses when no GPS data is present -->
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="GPS"        Opacity="0.55" Margin="0,0,14,0" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedItem.GpsText}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedItem.GpsText}" VerticalAlignment="Center" FontSize="10">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedItem.GpsText}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Path"       Opacity="0.55" Margin="0,2,14,0" VerticalAlignment="Top" />
+                                    <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding SelectedItem.LogicalPath}"
+                                               TextWrapping="Wrap" FontSize="10" Opacity="0.7" VerticalAlignment="Top" />
+                                </Grid>
+
+                            
+                                <!-- ── Reconciled fields ── -->
+                                <Separator Margin="0,16,0,8" />
+                                <TextBlock FontWeight="SemiBold" Margin="0,0,0,4">
+                                    <Run Text="Reconciled Values" />
+                                    <Run Text=" ⚠ conflict" Foreground="Orange" FontSize="10">
+                                        <Run.Style>
+                                            <Style TargetType="Run">
+                                                <Setter Property="Text" Value="" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Reconciliation.HasConflicts}" Value="True">
+                                                        <Setter Property="Text" Value=" ⚠ conflict" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Run.Style>
+                                    </Run>
+                                </TextBlock>
+
+                                <TextBlock Text="Select a media file to view reconciled metadata."
+                                           FontSize="11" Opacity="0.5">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconciliation.HasFields}" Value="False">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <ItemsControl ItemsSource="{Binding Reconciliation.Fields}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="8,5" Margin="0,0,0,1"
+                                                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                                    BorderThickness="0,0,0,1">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="80" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding FieldName}"
+                                                               FontSize="11" FontWeight="SemiBold"
+                                                               VerticalAlignment="Top" />
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding PreferredValue}"
+                                                                   FontSize="11" TextWrapping="Wrap" />
+                                                        <!-- Show all candidates when there are multiple sources -->
+                                                        <ItemsControl ItemsSource="{Binding Candidates}" Margin="0,2,0,0">
+                                                            <ItemsControl.Style>
+                                                                <Style TargetType="ItemsControl">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Candidates.Count}" Value="1">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Status}" Value="Conflicted">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Status}" Value="Merged">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ItemsControl.Style>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock FontSize="9" Opacity="0.55" Margin="0,1,0,0">
+                                                                        <Run Text="{Binding SourceType, Mode=OneWay}" />
+                                                                        <Run Text=": " />
+                                                                        <Run Text="{Binding RawValue, Mode=OneWay}" />
+                                                                    </TextBlock>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" FontSize="10" Opacity="0.5"
+                                                               VerticalAlignment="Top" Margin="8,0,0,0"
+                                                               Text="{Binding Confidence.Label}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Separator Margin="0,16,0,8" />
+                                <TextBlock Text="Evidence Sources"
+                                           FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                                <!-- No contributors hint -->
+                                <TextBlock Text="No evidence sources detected."
+                                           FontSize="11" Opacity="0.5">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Contributors.HasEntries}" Value="False">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <ItemsControl ItemsSource="{Binding Contributors.Entries}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="8,4" Margin="0,0,0,1"
+                                                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                                    BorderThickness="0,0,0,1">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding SourceKind}"
+                                                               FontSize="11" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Description}"
+                                                               FontSize="10" Opacity="0.65"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                    </TabItem>
+
+                    <!-- ?? Metadata ?? -->
+                <TabItem Header="Metadata">
+                    <Grid>
+
+                        <TextBlock Text="Select a media file to view its raw metadata."
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Metadata.IsLoading}"  Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Metadata.HasEntries}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <TextBlock Text="Reading metadata&#x2026;"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Metadata.IsLoading}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <ListView ItemsSource="{Binding Metadata.Entries}" SelectionMode="Single" FontSize="11">
+                            <ListView.Style>
+                                <Style TargetType="ListView">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Metadata.HasEntries}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListView.Style>
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Directory" DisplayMemberBinding="{Binding DirectoryName}" Width="130" />
+                                    <GridViewColumn Header="Tag"       DisplayMemberBinding="{Binding TagName}"       Width="180" />
+                                    <GridViewColumn Header="Value"     DisplayMemberBinding="{Binding Value}"         Width="300" />
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+
+                    </Grid>
+                </TabItem>
+
+                <!-- ?? Artifacts ?? -->
+                <TabItem Header="Artifacts">
+                    <Grid>
+
+                        <!-- Hint: only shown when nothing is selected -->
+                        <TextBlock Text="Select a media file to view its embedded artifacts."
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedItem}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Thumbnail info (shown for any non-null, non-directory selection) -->
+                        <ScrollViewer>
+                            <ScrollViewer.Style>
+                                <Style TargetType="ScrollViewer">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedItem}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SelectedItem.IsDirectory}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ScrollViewer.Style>
+                            <StackPanel Margin="10">
+
+                                <TextBlock Text="EXIF Thumbnail"
+                                           FontWeight="SemiBold" Margin="0,0,0,8" />
+
+                                <!-- Thumbnail image: border and image both collapse when absent -->
+                                <Border BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                        Margin="0,0,0,6"
+                                        HorizontalAlignment="Left">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Thumbnail.HasThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Image Source="{Binding Thumbnail.Source}"
+                                           MaxHeight="160" MaxWidth="240"
+                                           Stretch="Uniform" />
+                                </Border>
+
+                                <!-- Representative frame comparison -->
+                                <Border Margin="0,8,0,0" Padding="8,6" BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Thumbnail.HasCompareResult}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel>
+                                        <TextBlock Text="Thumbnail vs. Main Image"
+                                                   FontWeight="SemiBold" FontSize="11" Margin="0,0,0,4" />
+                                        <TextBlock Text="{Binding Thumbnail.ThumbnailCompareResult}"
+                                                   FontSize="10" TextWrapping="Wrap" Opacity="0.75"
+                                                   Margin="0,0,0,6" />
+                                        <!-- Side-by-side when main preview is available -->
+                                        <StackPanel Orientation="Horizontal">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Thumbnail.HasMainPreview}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+                                            <StackPanel Margin="0,0,8,0">
+                                                <TextBlock Text="Embedded thumbnail" FontSize="9" Opacity="0.55" Margin="0,0,0,2" />
+                                                <Image Source="{Binding Thumbnail.Source}"
+                                                       MaxHeight="120" MaxWidth="160" Stretch="Uniform" />
+                                            </StackPanel>
+                                            <StackPanel>
+                                                <TextBlock Text="Main image (preview)" FontSize="9" Opacity="0.55" Margin="0,0,0,2" />
+                                                <Image Source="{Binding Thumbnail.MainPreviewSource}"
+                                                       MaxHeight="120" MaxWidth="160" Stretch="Uniform" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Thumbs.db cached thumbnail -->
+                                <TextBlock Text="Thumbs.db Cache"
+                                           FontWeight="SemiBold" Margin="0,16,0,8" />
+
+                                <Border BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                        Margin="0,0,0,6"
+                                        HorizontalAlignment="Left">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Thumbnail.HasCacheThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Image Source="{Binding Thumbnail.CacheSource}"
+                                           MaxHeight="160" MaxWidth="240"
+                                           Stretch="Uniform" />
+                                </Border>
+
+                                <!-- ZbThumbnail.info cached thumbnail -->
+                                <TextBlock Text="ZbThumbnail.info Cache"
+                                           FontWeight="SemiBold" Margin="0,16,0,8">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Thumbnail.HasZbThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <Border BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                        Margin="0,0,0,6"
+                                        HorizontalAlignment="Left">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Thumbnail.HasZbThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Image Source="{Binding Thumbnail.ZbThumbnailSource}"
+                                           MaxHeight="160" MaxWidth="240"
+                                           Stretch="Uniform" />
+                                </Border>
+
+                                <!-- Embedded artifact images (depth maps, XMP base64, gain maps) -->
+                                <TextBlock Text="Embedded Artifacts"
+                                           FontWeight="SemiBold" Margin="0,16,0,8">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Thumbnail.HasEmbeddedImages}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <ItemsControl ItemsSource="{Binding Thumbnail.EmbeddedImages}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,0,0,12">
+                                                <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding Info}" FontSize="10" Opacity="0.55" Margin="0,0,0,4" />
+                                                <Border BorderThickness="1"
+                                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                                                        HorizontalAlignment="Left"
+                                                        Margin="0,0,0,6">
+                                                    <Image Source="{Binding Source}"
+                                                           MaxHeight="160" MaxWidth="240"
+                                                           Stretch="Uniform" />
+                                                </Border>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+
+
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </TabItem>
+
+                <TabItem Header="Findings">
+                    <DockPanel>
+
+                        <!-- Aggregate review-priority summary bar -->
+                        <Border DockPanel.Dock="Top" Padding="8,6" Margin="0,0,0,2">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Setter Property="Background" Value="#1A888888" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Findings.HasFindings}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Findings.AggregateSeverityLevel}" Value="critical">
+                                            <Setter Property="Background" Value="#33FF3030" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Findings.AggregateSeverityLevel}" Value="high">
+                                            <Setter Property="Background" Value="#33FF8C00" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Findings.AggregateSeverityLevel}" Value="medium">
+                                            <Setter Property="Background" Value="#33FFD700" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding Findings.AggregateText}"
+                                       FontWeight="SemiBold" FontSize="12" />
+                        </Border>
+
+                        <!-- Hint -->
+                        <TextBlock Text="Select a media file to run analysis."
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Findings.IsLoading}"  Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Findings.HasFindings}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Loading -->
+                        <TextBlock Text="Analyzing&#x2026;"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Findings.IsLoading}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Findings list -->
+                        <ScrollViewer>
+                            <ScrollViewer.Style>
+                                <Style TargetType="ScrollViewer">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Findings.HasFindings}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ScrollViewer.Style>
+                            <ItemsControl ItemsSource="{Binding Findings.Entries}" Margin="6">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,6" Padding="0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="4" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- Priority / severity indicator bar -->
+                                                <Border Grid.Column="0" Margin="0,0,8,0">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <!-- Default: Info = neutral blue -->
+                                                            <Setter Property="Background" Value="#607D8B" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding ReviewPriority}" Value="Medium">
+                                                                    <Setter Property="Background" Value="#FF9800" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding ReviewPriority}" Value="High">
+                                                                    <Setter Property="Background" Value="#F44336" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding ReviewPriority}" Value="Critical">
+                                                                    <Setter Property="Background" Value="#B71C1C" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                </Border>
+
+                                                <!-- Content -->
+                                                <StackPanel Grid.Column="1" Margin="0,2,0,2">
+
+                                                    <!-- Header row: category + expand toggle -->
+                                                    <DockPanel LastChildFill="False">
+                                                        <TextBlock Text="{Binding Category}"
+                                                                   FontSize="10" Opacity="0.5"
+                                                                   DockPanel.Dock="Left"
+                                                                   VerticalAlignment="Center" />
+                                                        <!-- Expand toggle — only shown when details exist -->
+                                                        <ToggleButton DockPanel.Dock="Right"
+                                                                      IsChecked="{Binding IsExpanded}"
+                                                                      Width="16" Height="16"
+                                                                      Padding="0" Margin="4,0,0,0"
+                                                                      Background="Transparent"
+                                                                      BorderThickness="0"
+                                                                      Cursor="Hand"
+                                                                      ToolTip="Show/hide details"
+                                                                      VerticalAlignment="Center">
+                                                            <ToggleButton.Style>
+                                                                <Style TargetType="ToggleButton">
+                                                                    <Setter Property="Content" Value="▶" />
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasDetails}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                        <Trigger Property="IsChecked" Value="True">
+                                                                            <Setter Property="Content" Value="▼" />
+                                                                        </Trigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ToggleButton.Style>
+                                                        </ToggleButton>
+                                                    </DockPanel>
+
+                                                    <TextBlock Text="{Binding Observation}"
+                                                               TextWrapping="Wrap" FontSize="11" />
+
+                                                    <!-- Interpretation: only when present -->
+                                                    <TextBlock Text="{Binding Interpretation}"
+                                                               TextWrapping="Wrap" FontSize="10"
+                                                               FontStyle="Italic" Opacity="0.65"
+                                                               Margin="0,2,0,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Interpretation}" Value="{x:Null}">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+
+                                                    <!-- Observation confidence (always shown) -->
+                                                    <TextBlock FontSize="10" Opacity="0.4" Margin="0,2,0,0">
+                                                        <Run Text="Observation: " />
+                                                        <Run Text="{Binding ObservationConfidence.Label, Mode=OneWay}" />
+                                                    </TextBlock>
+
+                                                    <!-- ── Expanded detail section ─────────────────────────── -->
+                                                    <StackPanel Margin="0,4,0,0">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+
+                                                        <!-- Interpretation confidence -->
+                                                        <TextBlock FontSize="10" Opacity="0.4">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasInterpretationConfidence}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                            <Run Text="Interpretation: " />
+                                                            <Run Text="{Binding InterpretationConfidence.Label, Mode=OneWay}" />
+                                                        </TextBlock>
+
+                                                        <!-- Supporting factors -->
+                                                        <StackPanel>
+                                                            <StackPanel.Style>
+                                                                <Style TargetType="StackPanel">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasSupportingFactors}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </StackPanel.Style>
+                                                            <TextBlock Text="Supporting:" FontSize="10" Opacity="0.5" Margin="0,4,0,1" />
+                                                            <ItemsControl ItemsSource="{Binding SupportingFactors}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock FontSize="10" Opacity="0.7" TextWrapping="Wrap">
+                                                                            <Run Text="  ✓  " Foreground="#4CAF50" />
+                                                                            <Run Text="{Binding Mode=OneWay}" />
+                                                                        </TextBlock>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+
+                                                        <!-- Conflicting factors -->
+                                                        <StackPanel>
+                                                            <StackPanel.Style>
+                                                                <Style TargetType="StackPanel">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasConflictingFactors}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </StackPanel.Style>
+                                                            <TextBlock Text="Conflicting:" FontSize="10" Opacity="0.5" Margin="0,4,0,1" />
+                                                            <ItemsControl ItemsSource="{Binding ConflictingFactors}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock FontSize="10" Opacity="0.7" TextWrapping="Wrap">
+                                                                            <Run Text="  ✕  " Foreground="#F44336" />
+                                                                            <Run Text="{Binding Mode=OneWay}" />
+                                                                        </TextBlock>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+
+                                                        <!-- Provenance -->
+                                                        <TextBlock FontSize="10" Opacity="0.35" Margin="0,4,0,0">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasProvenance}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                            <Run Text="Source: " />
+                                                            <Run Text="{Binding Provenance, Mode=OneWay}" />
+                                                        </TextBlock>
+
+                                                    </StackPanel>
+                                                    <!-- ── End expanded section ──────────────────────────────── -->
+
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                    </DockPanel>
+                </TabItem>
+                <TabItem Header="Reconstruction">
+                    <Grid>
+
+                        <!-- No-selection hint -->
+                        <TextBlock Text="Select a media file to view extractable artifacts."
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Reconstruction.HasSelection}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <!-- Artifact extraction panel -->
+                        <ScrollViewer>
+                            <ScrollViewer.Style>
+                                <Style TargetType="ScrollViewer">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Reconstruction.HasSelection}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ScrollViewer.Style>
+                            <StackPanel Margin="10">
+
+                                <TextBlock Text="Exact Artifact Extraction"
+                                           FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <TextBlock Text="Export embedded or cached image data without modification. Extracted artifacts preserve their original binary format."
+                                           TextWrapping="Wrap" FontSize="11" Opacity="0.6" Margin="0,0,0,12" />
+
+                                <!-- EXIF thumbnail -->
+                                <Border Margin="0,0,0,8" Padding="8,6" BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconstruction.HasExifThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="EXIF Thumbnail" FontWeight="SemiBold" FontSize="11" />
+                                            <TextBlock Text="{Binding Reconstruction.ExifThumbnailInfo, FallbackValue='Embedded preview from image metadata'}" FontSize="10" Opacity="0.55" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Save&#x2026;" Padding="12,4"
+                                                Command="{Binding Reconstruction.SaveExifThumbnailCommand}" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- Thumbs.db thumbnail -->
+                                <Border Margin="0,0,0,8" Padding="8,6" BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconstruction.HasThumbsDbThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="Thumbs.db Cached Thumbnail" FontWeight="SemiBold" FontSize="11" />
+                                            <TextBlock Text="Windows Explorer thumbnail cache" FontSize="10" Opacity="0.55" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Save&#x2026;" Padding="12,4"
+                                                Command="{Binding Reconstruction.SaveThumbsDbThumbnailCommand}" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- Windows thumbcache thumbnail -->
+                                <Border Margin="0,0,0,8" Padding="8,6" BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconstruction.HasThumbcacheThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="Windows Thumbcache Thumbnail" FontWeight="SemiBold" FontSize="11" />
+                                            <TextBlock Text="Cached preview from Windows Explorer thumbcache" FontSize="10" Opacity="0.55" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Save&#x2026;" Padding="12,4"
+                                                Command="{Binding Reconstruction.SaveThumbcacheThumbnailCommand}" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- ZbThumbnail.info cached thumbnail -->
+                                <Border Margin="0,0,0,8" Padding="8,6" BorderThickness="1"
+                                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconstruction.HasZbThumbnail}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="ZbThumbnail.info Cached Thumbnail" FontWeight="SemiBold" FontSize="11" />
+                                            <TextBlock Text="Zoner Photo Studio thumbnail cache" FontSize="10" Opacity="0.55" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Save&#x2026;" Padding="12,4"
+                                                Command="{Binding Reconstruction.SaveZbThumbnailCommand}" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- Embedded artifacts (depth maps, gain maps, motion video, etc.) -->
+                                <ItemsControl ItemsSource="{Binding Reconstruction.EmbeddedArtifacts}">
+                                    <ItemsControl.Style>
+                                        <Style TargetType="ItemsControl">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconstruction.HasEmbeddedArtifacts}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ItemsControl.Style>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,0,0,8" Padding="8,6" BorderThickness="1"
+                                                    BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <!-- Content: preview + info -->
+                                                    <DockPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <!-- Preview thumbnail — visible for image/* artifacts once loaded -->
+                                                        <Border DockPanel.Dock="Left" Width="64" Height="64"
+                                                                Margin="0,0,8,0"
+                                                                Background="#1A888888">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding CanPreview}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <Image Source="{Binding Preview}"
+                                                                   Stretch="Uniform"
+                                                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                                                        </Border>
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="11" />
+                                                            <TextBlock FontSize="10" Opacity="0.55">
+                                                                <TextBlock.Text>
+                                                                    <MultiBinding StringFormat="{}{0}  ·  {1}  ·  confidence: {2}">
+                                                                        <Binding Path="MimeType" />
+                                                                        <Binding Path="SizeText" />
+                                                                        <Binding Path="ParseConfidence.Label" />
+                                                                    </MultiBinding>
+                                                                </TextBlock.Text>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </DockPanel>
+                                                    <Button Grid.Column="1" Content="Save&#x2026;" Padding="12,4"
+                                                            VerticalAlignment="Center"
+                                                            Command="{Binding DataContext.Reconstruction.SaveEmbeddedArtifactCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                            CommandParameter="{Binding}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- No artifacts hint -->
+                                <TextBlock Text="No extractable artifacts available for this file."
+                                           Opacity="0.5" Margin="0,4,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconstruction.HasAnyArtifact}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- Status text -->
+                                <TextBlock Text="{Binding Reconstruction.StatusText}"
+                                           FontSize="11" Opacity="0.7" Margin="0,8,0,0"
+                                           TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Reconstruction.HasStatus}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </TabItem>
+
+                <!-- Session storyboard/contact sheet tab -->
+                <TabItem Header="Session">
+                    <DockPanel>
+
+                        <!-- Session label bar -->
+                        <Border DockPanel.Dock="Top" Padding="8,5" Margin="0,0,0,2">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Storyboard.HasItems}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding Storyboard.SessionLabel}"
+                                       FontWeight="SemiBold" FontSize="11" />
+                        </Border>
+
+                        <!-- Empty state -->
+                        <TextBlock DockPanel.Dock="Top"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Opacity="0.5" Margin="0,40,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Storyboard.HasItems}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            <Run Text="No session data." />
+                            <LineBreak />
+                            <Run Text="Files need capture timestamps to be grouped into sessions."
+                                 Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        </TextBlock>
+
+                        <!-- Horizontal filmstrip of session items -->
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      Padding="6,4">
+                            <ScrollViewer.Style>
+                                <Style TargetType="ScrollViewer">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Storyboard.HasItems}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ScrollViewer.Style>
+                            <ItemsControl ItemsSource="{Binding Storyboard.Items}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Width="112" Margin="3,2" Padding="2" BorderThickness="1"
+                                                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCurrentItem}" Value="True">
+                                                            <Setter Property="BorderBrush"
+                                                                    Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}" />
+                                                            <Setter Property="BorderThickness" Value="2" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <!-- Thumbnail area -->
+                                                <Border Height="76" Background="#18808080">
+                                                    <Grid>
+                                                        <!-- Placeholder when no thumbnail -->
+                                                        <TextBlock Text="…" HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center" Opacity="0.3"
+                                                                   FontSize="20">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasThumbnail}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                        <Image Source="{Binding Thumbnail}"
+                                                               Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+                                                    </Grid>
+                                                </Border>
+                                                <!-- File name -->
+                                                <TextBlock Text="{Binding DisplayName}" FontSize="9"
+                                                           TextTrimming="CharacterEllipsis" Margin="2,2,2,0" />
+                                                <!-- Date/time -->
+                                                <TextBlock Text="{Binding PreferredDateText}" FontSize="8"
+                                                           Opacity="0.5" Margin="2,0,2,2"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <!-- Navigate button — hidden for current item -->
+                                                <Button Content="Go to" FontSize="9" Padding="4,2"
+                                                        Margin="2,0,2,2"
+                                                        Command="{Binding DataContext.Storyboard.NavigateToItemCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Visibility" Value="Visible" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsCurrentItem}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                    </DockPanel>
+                </TabItem>
+
+                <!-- Related Items tab: exact duplicates, near-duplicates, burst siblings -->
+                <TabItem Header="Related">
+                    <Grid>
+
+                        <!-- No-selection or no-related hint -->
+                        <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RelatedItems.HasItems}" Value="False">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            <Run Text="No related items found." />
+                            <LineBreak />
+                            <Run Text="Exact duplicates, near-duplicates, and burst siblings appear here." Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}" />
+                        </TextBlock>
+
+                        <!-- Related items list -->
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="8">
+                            <ScrollViewer.Style>
+                                <Style TargetType="ScrollViewer">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RelatedItems.HasItems}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ScrollViewer.Style>
+                            <ItemsControl ItemsSource="{Binding RelatedItems.Items}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,6" Padding="8,6" BorderThickness="1"
+                                                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="11" />
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding RelationshipType}" FontSize="10"
+                                                                   Foreground="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}" />
+                                                        <TextBlock Text=" · " FontSize="10" Opacity="0.55" />
+                                                        <TextBlock Text="{Binding PreferredDateText}" FontSize="10" Opacity="0.55" />
+                                                        <TextBlock Text=" · " FontSize="10" Opacity="0.55"
+                                                                   Visibility="{Binding FindingsText, Converter={StaticResource NullOrEmptyToCollapsed}}" />
+                                                        <TextBlock Text="{Binding FindingsText}" FontSize="10" Opacity="0.55"
+                                                                   Visibility="{Binding FindingsText, Converter={StaticResource NullOrEmptyToCollapsed}}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="Go to" Padding="10,4"
+                                                        Command="{Binding DataContext.RelatedItems.NavigateToItemCommand,
+                                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                    </Grid>
+                </TabItem>
+
+                </TabControl>
+            </Grid>
+
+        </Grid>
+    </DockPanel>
+</Window>

@@ -1,0 +1,73 @@
+<Window x:Class="ArtifactView.App.Views.FullscreenViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        WindowState="Maximized"
+        Background="Black"
+        ShowInTaskbar="False"
+        PreviewKeyDown="OnKeyDown"
+        KeyboardNavigation.TabNavigation="None">
+    <Grid>
+
+        <!-- Fit mode: Image fills the window proportionally -->
+        <Image x:Name="FitImage"
+               Stretch="Uniform"
+               RenderOptions.BitmapScalingMode="HighQuality">
+            <Image.LayoutTransform>
+                <RotateTransform x:Name="FitRotation" Angle="0" />
+            </Image.LayoutTransform>
+        </Image>
+
+        <!-- Zoom / 1:1 mode: Image at scaled size inside a ScrollViewer.
+             LayoutTransform (not RenderTransform) so the ScrollViewer
+             receives the correct content size and shows scrollbars. -->
+        <ScrollViewer x:Name="ZoomViewer"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      Visibility="Collapsed">
+            <Image x:Name="ZoomImage" Stretch="None">
+                <Image.LayoutTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="ZoomTransform" ScaleX="1" ScaleY="1" />
+                        <RotateTransform x:Name="ZoomRotation" Angle="0" />
+                    </TransformGroup>
+                </Image.LayoutTransform>
+            </Image>
+        </ScrollViewer>
+
+        <!-- Loading indicator: hidden when a thumbnail preview is already visible -->
+        <TextBlock x:Name="LoadingText"
+                   Foreground="White" Opacity="0.5" FontSize="18"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Visibility="Collapsed" />
+
+        <!-- Bottom overlay bar: filename, navigation count, zoom level -->
+        <Border x:Name="OverlayBar"
+                VerticalAlignment="Bottom"
+                Background="#CC000000"
+                Padding="14,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="FileInfoText"
+                           Grid.Column="0"
+                           Foreground="White" FontSize="12"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1"
+                           HorizontalAlignment="Center"
+                           Foreground="White" FontSize="11" Opacity="0.38"
+                           VerticalAlignment="Center"
+                           Text="Z/Space/DblClick: fit/1:1   +/-: zoom   L/R: rotate   I: invert   Tab: version   Home/End: first/last   Esc: close" />
+                <TextBlock x:Name="ZoomInfoText"
+                           Grid.Column="2"
+                           HorizontalAlignment="Right"
+                           Foreground="White" FontSize="12" Opacity="0.8"
+                           VerticalAlignment="Center" />
+            </Grid>        </Border>
+
+    </Grid>
+</Window>

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>ArtifactView.Application.Tests</AssemblyName>
+    <RootNamespace>ArtifactView.Application.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ArtifactView.Application\ArtifactView.Application.csproj" />
+    <ProjectReference Include="..\..\src\ArtifactView.Infrastructure\ArtifactView.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
