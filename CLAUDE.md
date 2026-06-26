@@ -7,6 +7,8 @@
 - Build: `dotnet build ArtifactView.sln` | Test: `dotnet test --solution ArtifactView.sln`
   (tests use TUnit on Microsoft.Testing.Platform; MTP mode is enabled via `global.json`,
   so `dotnet test` requires `--solution`/`--project`. On WSL add `-p:EnableWindowsTargeting=true`.)
+  On WSL prefer `scripts/run-tests.sh` — it rsyncs to an ext4 work dir first, since running
+  the suite over `/mnt` (drvfs) wedges the Windows-drive mount.
 
 ## Startup
 
