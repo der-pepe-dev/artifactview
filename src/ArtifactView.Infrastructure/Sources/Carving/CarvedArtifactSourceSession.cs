@@ -10,22 +10,12 @@ namespace ArtifactView.Infrastructure.Sources.Carving;
 /// </summary>
 public sealed class CarvedArtifactSourceSession(string imagePath) : ISourceSession
 {
-    // v1 carves an in-memory buffer; skip images larger than this (streaming carve is a
-    // follow-up). 512 MiB covers cards/partitions extracted for review without OOM risk.
-    private const long MaxScanBytes = 512L * 1024 * 1024;
-
     public string SourceId => "carved-artifact:" + imagePath;
 
     public async IAsyncEnumerable<SourceItemDescriptor> EnumerateItemsAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var artifacts = await Task.Run(() =>
-        {
-            var info = new FileInfo(imagePath);
-            if (!info.Exists || info.Length == 0 || info.Length > MaxScanBytes)
-                return (IReadOnlyList<CarvedArtifact>)[];
-            return SignatureCarver.Carve(File.ReadAllBytes(imagePath));
-        }, cancellationToken);
+        var artifacts = await Task.Run(() => SignatureCarver.CarveFile(imagePath), cancellationToken);
 
         foreach (var a in artifacts)
         {

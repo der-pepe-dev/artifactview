@@ -13,6 +13,13 @@ internal static class ImageDecoder
     public static BitmapSource Decode(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return Decode(stream);
+    }
+
+    // Decodes from an in-memory/seekable stream (e.g. carved byte ranges that have no
+    // file path) with the same EXIF-orientation handling as the file path overload.
+    public static BitmapSource Decode(Stream stream)
+    {
         var decoder = BitmapDecoder.Create(
             stream,
             BitmapCreateOptions.IgnoreColorProfile,

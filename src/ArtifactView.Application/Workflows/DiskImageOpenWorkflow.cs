@@ -46,25 +46,27 @@ public sealed class DiskImageOpenWorkflow(ILogger<DiskImageOpenWorkflow> logger)
         }
 
         // Carving pass: recover signature-carved artifacts (JPEG/PNG) from the raw image,
-        // including content with no live filesystem entry. Surfaced as "Carved" rows.
-        await using var carve = new CarvedArtifactSourceSession(imagePath);
-        await foreach (var c in carve.EnumerateItemsAsync(cancellationToken))
+        // including content with no live filesystem entry. Surfaced as "Carved" rows whose
+        // bytes the viewer reads directly from the carved [offset, +length) range.
+        var carved = await Task.Run(() => SignatureCarver.CarveFile(imagePath), cancellationToken);
+        foreach (var c in carved)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var cext = c.Extension ?? Path.GetExtension(c.LogicalPath);
-
             yield return new MediaEntityRow
             {
-                DisplayName       = c.DisplayName,
-                LogicalPath       = string.Empty, // recoverable via the carved source session, not a path
+                DisplayName       = $"carved_{c.Offset:x}{c.Extension}",
+                LogicalPath       = string.Empty, // recoverable via the carved byte range, not a path
                 IsDirectory       = false,
                 SortOrder         = 3,
-                ItemIcon          = IconForExtension(cext ?? string.Empty),
-                FileSizeText      = FormatSize(c.Size ?? 0),
-                FileSizeBytes     = c.Size ?? 0,
+                ItemIcon          = IconForExtension(c.Extension),
+                FileSizeText      = FormatSize(c.Length),
+                FileSizeBytes     = c.Length,
                 PresenceState     = "Carved",
                 PrimarySourceType = "Carved (signature)",
+                CarvedImagePath   = imagePath,
+                CarvedOffset      = c.Offset,
+                CarvedLength      = c.Length,
                 ResolutionText    = string.Empty,
                 PreferredDateText = string.Empty,
                 CameraModel       = string.Empty,

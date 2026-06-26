@@ -17,6 +17,22 @@ public static class SignatureCarver
     // stream can't run to the end of a huge image. 64 MiB comfortably exceeds real photos.
     private const long MaxArtifactBytes = 64L * 1024 * 1024;
 
+    // v1 carves an in-memory buffer; images larger than this are skipped (streaming carve
+    // is a follow-up). 512 MiB covers cards/partitions extracted for review without OOM risk.
+    public const long DefaultMaxScanBytes = 512L * 1024 * 1024;
+
+    /// <summary>
+    /// Reads an image file (subject to <paramref name="maxScanBytes"/>) and carves it.
+    /// Returns an empty list when the file is missing, empty, or too large to scan in memory.
+    /// </summary>
+    public static IReadOnlyList<CarvedArtifact> CarveFile(string path, long maxScanBytes = DefaultMaxScanBytes)
+    {
+        var info = new FileInfo(path);
+        if (!info.Exists || info.Length == 0 || info.Length > maxScanBytes)
+            return [];
+        return Carve(File.ReadAllBytes(path));
+    }
+
     public static IReadOnlyList<CarvedArtifact> Carve(byte[] data)
     {
         ArgumentNullException.ThrowIfNull(data);

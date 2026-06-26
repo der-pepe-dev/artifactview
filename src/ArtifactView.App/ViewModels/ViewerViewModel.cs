@@ -90,13 +90,20 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
         LoadError     = null;
         IsGhostPreview = false;
 
+        var token = _loadCts.Token;
+
+        // Carved artifact: no filesystem path — read the carved byte range from the image.
+        if (row is not null && !string.IsNullOrEmpty(row.CarvedImagePath) && row.CarvedLength > 0)
+        {
+            _ = Task.Run(() => LoadCarvedAsync(row, token), token);
+            return;
+        }
+
         if (row is null || string.IsNullOrEmpty(row.LogicalPath))
         {
             Source = null;
             return;
         }
-
-        var token = _loadCts.Token;
 
         // Ghost file: extract and display the cached Thumbs.db thumbnail.
         if (row.PresenceState == "Ghost")
@@ -168,6 +175,66 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
                 });
             }
         }, token);
+    }
+
+    // Loads a signature-carved artifact by reading its byte range directly from the
+    // source image. Carved artifacts have no filesystem path, only an [offset, +length).
+    private void LoadCarvedAsync(MediaEntityRow row, CancellationToken token)
+    {
+        byte[]? payload = null;
+        try
+        {
+            if (row.CarvedLength > 0 && row.CarvedLength <= int.MaxValue)
+            {
+                payload = new byte[(int)row.CarvedLength];
+                using var fs = new FileStream(row.CarvedImagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                fs.Seek(row.CarvedOffset, SeekOrigin.Begin);
+                fs.ReadExactly(payload);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to read carved bytes: {Name}", row.DisplayName);
+        }
+
+        if (token.IsCancellationRequested) return;
+
+        if (payload is null || payload.Length == 0)
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                Source    = null;
+                LoadError = "Carved artifact — bytes unavailable.";
+            });
+            return;
+        }
+
+        try
+        {
+            using var ms = new MemoryStream(payload);
+            // Use the shared decoder so carved photos get EXIF-orientation handling,
+            // identical to the normal file path.
+            var frame = ImageDecoder.Decode(ms);
+
+            if (token.IsCancellationRequested) return;
+
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (token.IsCancellationRequested) return;
+                Source    = frame;
+                LoadError = null;
+            });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to decode carved artifact: {Name}", row.DisplayName);
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                Source    = null;
+                LoadError = "Carved artifact — could not be decoded.";
+            });
+        }
     }
 
     // Loads a cached thumbnail for a ghost file, trying each cache source

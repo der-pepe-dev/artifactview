@@ -85,6 +85,13 @@ public sealed class MediaEntityRow : INotifyPropertyChanged
     public long   ZbThumbnailPayloadOffset { get; init; }
     public int    ZbThumbnailDataSize      { get; init; }
 
+    // For artifacts recovered by signature carving from a raw image (no filesystem entry).
+    // The bytes are the range [CarvedOffset, CarvedOffset + CarvedLength) within
+    // CarvedImagePath — the viewer reads them directly, like the cache-extraction sources.
+    public string CarvedImagePath { get; init; } = string.Empty;
+    public long   CarvedOffset    { get; init; }
+    public long   CarvedLength    { get; init; }
+
     public string PresenceState
     {
         get => _presenceState;
