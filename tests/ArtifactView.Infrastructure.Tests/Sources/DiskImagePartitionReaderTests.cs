@@ -1,7 +1,8 @@
+using System.IO;
 using DiscUtils;
 using DiscUtils.Fat;
-using Xunit;
 using ArtifactView.Infrastructure.Sources.DiskImage;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Sources;
 
@@ -54,26 +55,26 @@ public sealed class DiskImagePartitionReaderTests : IDisposable
 
     // ── negative cases ───────────────────────────────────────────────────────
 
-    [Fact]
-    public void ReadAllMediaFiles_on_nonexistent_path_returns_empty()
+    [Test]
+    public async Task ReadAllMediaFiles_on_nonexistent_path_returns_empty()
     {
         var results = DiskImagePartitionReader.ReadAllMediaFiles("/no/such/file_99999.dd");
-        Assert.Empty(results);
+        await Assert.That(results).IsEmpty();
     }
 
-    [Fact]
-    public void ReadAllMediaFiles_on_random_bytes_returns_empty()
+    [Test]
+    public async Task ReadAllMediaFiles_on_random_bytes_returns_empty()
     {
         var data = new byte[4096];
         new Random(42).NextBytes(data);
         var path = SaveTempImage(data);
-        Assert.Empty(DiskImagePartitionReader.ReadAllMediaFiles(path));
+        await Assert.That(DiskImagePartitionReader.ReadAllMediaFiles(path)).IsEmpty();
     }
 
     // ── FAT partition ────────────────────────────────────────────────────────
 
-    [Fact]
-    public void ReadAllMediaFiles_raw_fat_returns_media_file()
+    [Test]
+    public async Task ReadAllMediaFiles_raw_fat_returns_media_file()
     {
         var path = CreateFatImage(fat =>
         {
@@ -84,16 +85,16 @@ public sealed class DiskImagePartitionReaderTests : IDisposable
         var results = DiskImagePartitionReader.ReadAllMediaFiles(path);
 
         // FAT uppercases 8.3 filenames; use case-insensitive comparison throughout.
-        Assert.Single(results);
+        await Assert.That(results).HasSingleItem();
         var entry = results[0];
-        Assert.Equal("photo.jpg", FatFilename(entry.LogicalPath), StringComparer.OrdinalIgnoreCase);
-        Assert.Equal("FAT", entry.Filesystem);
-        Assert.Equal(0, entry.PartitionIndex);
-        Assert.False(entry.IsDeleted);
+        await Assert.That(FatFilename(entry.LogicalPath)).IsEqualTo("photo.jpg").IgnoringCase();
+        await Assert.That(entry.Filesystem).IsEqualTo("FAT");
+        await Assert.That(entry.PartitionIndex).IsEqualTo(0);
+        await Assert.That(entry.IsDeleted).IsFalse();
     }
 
-    [Fact]
-    public void ReadAllMediaFiles_raw_fat_excludes_non_media_extensions()
+    [Test]
+    public async Task ReadAllMediaFiles_raw_fat_excludes_non_media_extensions()
     {
         var path = CreateFatImage(fat =>
         {
@@ -105,14 +106,14 @@ public sealed class DiskImagePartitionReaderTests : IDisposable
 
         var results = DiskImagePartitionReader.ReadAllMediaFiles(path);
 
-        Assert.Equal(2, results.Count);
-        Assert.Contains(results, r => FatFilename(r.LogicalPath).Equals("photo.jpg", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(results, r => FatFilename(r.LogicalPath).Equals("video.mp4", StringComparison.OrdinalIgnoreCase));
-        Assert.DoesNotContain(results, r => FatFilename(r.LogicalPath).Equals("document.pdf", StringComparison.OrdinalIgnoreCase));
+        await Assert.That(results.Count).IsEqualTo(2);
+        await Assert.That(results).Contains(r => FatFilename(r.LogicalPath).Equals("photo.jpg", StringComparison.OrdinalIgnoreCase));
+        await Assert.That(results).Contains(r => FatFilename(r.LogicalPath).Equals("video.mp4", StringComparison.OrdinalIgnoreCase));
+        await Assert.That(results).DoesNotContain(r => FatFilename(r.LogicalPath).Equals("document.pdf", StringComparison.OrdinalIgnoreCase));
     }
 
-    [Fact]
-    public void ReadAllMediaFiles_raw_fat_recurses_into_subdirectories()
+    [Test]
+    public async Task ReadAllMediaFiles_raw_fat_recurses_into_subdirectories()
     {
         var path = CreateFatImage(fat =>
         {
@@ -122,12 +123,13 @@ public sealed class DiskImagePartitionReaderTests : IDisposable
 
         var results = DiskImagePartitionReader.ReadAllMediaFiles(path);
 
-        Assert.Equal(2, results.Count);
-        Assert.All(results, r => Assert.Equal("FAT", r.Filesystem));
+        await Assert.That(results.Count).IsEqualTo(2);
+        foreach (var r in results)
+            await Assert.That(r.Filesystem).IsEqualTo("FAT");
     }
 
-    [Fact]
-    public void ReadAllMediaFiles_raw_fat_all_supported_extensions_detected()
+    [Test]
+    public async Task ReadAllMediaFiles_raw_fat_all_supported_extensions_detected()
     {
         // FAT12 (floppy) only supports 3-char extensions; test the 3-char subset.
         // 4-char extensions (.jpeg, .heic, .heif, .tiff, .webp, .avif) are covered via NTFS.
@@ -145,41 +147,41 @@ public sealed class DiskImagePartitionReaderTests : IDisposable
         });
 
         var results = DiskImagePartitionReader.ReadAllMediaFiles(path);
-        Assert.Equal(extensions.Length, results.Count);
+        await Assert.That(results.Count).IsEqualTo(extensions.Length);
     }
 
-    [Fact]
-    public void ReadAllMediaFiles_raw_fat_size_bytes_matches()
+    [Test]
+    public async Task ReadAllMediaFiles_raw_fat_size_bytes_matches()
     {
         var content = new byte[1234];
         var path = CreateFatImage(fat => Write(fat, "img.png", content));
 
         var results = DiskImagePartitionReader.ReadAllMediaFiles(path);
 
-        Assert.Single(results);
-        Assert.Equal(1234L, results[0].SizeBytes);
+        await Assert.That(results).HasSingleItem();
+        await Assert.That(results[0].SizeBytes).IsEqualTo(1234L);
     }
 
-    [Fact]
-    public void ReadAllMediaFiles_raw_fat_modified_time_populated()
+    [Test]
+    public async Task ReadAllMediaFiles_raw_fat_modified_time_populated()
     {
         var path = CreateFatImage(fat => Write(fat, "photo.jpg", [0xFF, 0xD8]));
 
         var results = DiskImagePartitionReader.ReadAllMediaFiles(path);
 
-        Assert.Single(results);
+        await Assert.That(results).HasSingleItem();
         Assert.NotNull(results[0].ModifiedUtc);
     }
 
     // ── IsDeleted flag ────────────────────────────────────────────────────────
 
-    [Fact]
-    public void ReadAllMediaFiles_live_fat_entries_have_IsDeleted_false()
+    [Test]
+    public async Task ReadAllMediaFiles_live_fat_entries_have_IsDeleted_false()
     {
         var path = CreateFatImage(fat => Write(fat, "photo.jpg", [0xFF, 0xD8]));
 
         var results = DiskImagePartitionReader.ReadAllMediaFiles(path);
 
-        Assert.All(results, r => Assert.False(r.IsDeleted));
+        await Assert.That(results).All(r => !(r.IsDeleted));
     }
 }

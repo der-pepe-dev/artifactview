@@ -19,21 +19,40 @@ Prioritize tests for: metadata reconciliation, confidence scoring, ghost-item me
 reconstruction naming and export rules, integrity-check behavior, direct-open fast-path
 behavior, plugin policy and manifest loading, and timestamp/GPS interpretation rules.
 
+## Test framework: TUnit
+
+Tests use **TUnit** (Microsoft.Testing.Platform), not xUnit. Key points:
+
+- `[Test]`; data via `[Arguments(...)]`. Assertions are async fluent:
+  `await Assert.That(actual).IsEqualTo(expected)` (test methods are `async Task`).
+  `Assert.Null<T>(x)` / `Assert.NotNull<T>(x)` statics also exist.
+- `dotnet test` runs in MTP mode via the repo-root `global.json`
+  (`{"test":{"runner":"Microsoft.Testing.Platform"}}`) and needs `--project`/`--solution`
+  (e.g. `dotnet test --solution ArtifactView.sln`). Each test project is `<OutputType>Exe</OutputType>`
+  and can also be run directly with `dotnet run --project <proj>`.
+- Skips: declarative `SkipAttribute` subclass for static conditions, or runtime
+  `Skip.When(cond, "reason")` / `Skip.Unless(cond, "reason")` inline in the test body
+  (the direct successors of the old `Skip.If` / `Skip.IfNot`).
+
 ## Test environment: WSL2
 
-Tests run on WSL2 (`net10.0-windows` TFM on Linux). Known limitations:
+Tests run on WSL2 (`net10.0-windows` TFM on Linux). Builds need
+`-p:EnableWindowsTargeting=true` (or env var) on Linux. Known limitations:
 
-**GDI+**: `System.Drawing.Bitmap` fails on WSL2 — `gdiplus.dll` not found. Use
-`[SkippableFact]` with a runtime `Lazy<bool>` probe, not `OperatingSystem.IsWindows()`
-(which returns false on WSL2):
+**GDI+**: `System.Drawing.Bitmap` fails on WSL2 — `gdiplus.dll` not found. Use the
+`[RequiresGdiPlus]` attribute (`tests/ArtifactView.Infrastructure.Tests/TestInfrastructure/`),
+a `SkipAttribute` that probes actual availability at runtime — not
+`OperatingSystem.IsWindows()` (returns false on WSL2). libgdiplus works on Linux too,
+so it is a real `Bitmap` probe:
 
 ```csharp
-private static readonly Lazy<bool> s_gdiPlusAvailable = new(() =>
-{
-    try { _ = new Bitmap(1, 1); return true; }
-    catch { return false; }
-});
+[Test, RequiresGdiPlus]
+public async Task My_image_test() { ... }
 ```
+
+For file-fixture skips whose path is computed at runtime (not a compile-time constant),
+use inline `Skip.When(!File.Exists(path), "reason")` instead — attribute arguments must
+be constants.
 
 **Path separators**: `Path.GetFileName` / `GetDirectoryName` do not treat `\` as a
 separator on Linux, but DiscUtils FAT/NTFS paths use `\`. Split on both separators

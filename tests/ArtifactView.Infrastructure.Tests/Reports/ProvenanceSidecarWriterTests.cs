@@ -1,7 +1,8 @@
+using System.IO;
 using System.Text.Json;
 using ArtifactView.Core.Models;
 using ArtifactView.Infrastructure.Reports;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Reports;
 
@@ -18,8 +19,8 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
 
     private string OutputPath(string name) => Path.Combine(_dir, name);
 
-    [Fact]
-    public void Write_creates_sidecar_file_next_to_output()
+    [Test]
+    public async Task Write_creates_sidecar_file_next_to_output()
     {
         var path = OutputPath("artifact.jpg");
         ProvenanceSidecarWriter.Write(path, new ProvenanceSidecar
@@ -34,11 +35,11 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
             ByteCount              = 1024
         });
 
-        Assert.True(File.Exists(path + ".provenance.json"));
+        await Assert.That(File.Exists(path + ".provenance.json")).IsTrue();
     }
 
-    [Fact]
-    public void Write_sidecar_contains_valid_json()
+    [Test]
+    public async Task Write_sidecar_contains_valid_json()
     {
         var path = OutputPath("artifact.jpg");
         ProvenanceSidecarWriter.Write(path, new ProvenanceSidecar
@@ -54,12 +55,11 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
         });
 
         var json = File.ReadAllText(path + ".provenance.json");
-        var ex = Record.Exception(() => JsonDocument.Parse(json));
-        Assert.Null(ex);
+        await Assert.That(() => JsonDocument.Parse(json)).ThrowsNothing();
     }
 
-    [Fact]
-    public void Write_sidecar_uses_camel_case_property_names()
+    [Test]
+    public async Task Write_sidecar_uses_camel_case_property_names()
     {
         var path = OutputPath("artifact.jpg");
         ProvenanceSidecarWriter.Write(path, new ProvenanceSidecar
@@ -75,14 +75,14 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
         });
 
         var json = File.ReadAllText(path + ".provenance.json");
-        Assert.Contains("\"sourceFile\"", json);
-        Assert.Contains("\"extractionSource\"", json);
-        Assert.Contains("\"byteCount\"", json);
-        Assert.DoesNotContain("\"SourceFile\"", json);
+        await Assert.That(json).Contains("\"sourceFile\"");
+        await Assert.That(json).Contains("\"extractionSource\"");
+        await Assert.That(json).Contains("\"byteCount\"");
+        await Assert.That(json).DoesNotContain("\"SourceFile\"");
     }
 
-    [Fact]
-    public void Write_sidecar_omits_null_optional_fields()
+    [Test]
+    public async Task Write_sidecar_omits_null_optional_fields()
     {
         var path = OutputPath("artifact.jpg");
         ProvenanceSidecarWriter.Write(path, new ProvenanceSidecar
@@ -100,12 +100,12 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
         });
 
         var json = File.ReadAllText(path + ".provenance.json");
-        Assert.DoesNotContain("\"warning\"", json);
-        Assert.DoesNotContain("\"notes\"", json);
+        await Assert.That(json).DoesNotContain("\"warning\"");
+        await Assert.That(json).DoesNotContain("\"notes\"");
     }
 
-    [Fact]
-    public void Write_sidecar_includes_warning_when_set()
+    [Test]
+    public async Task Write_sidecar_includes_warning_when_set()
     {
         var path = OutputPath("artifact.png");
         ProvenanceSidecarWriter.Write(path, new ProvenanceSidecar
@@ -122,12 +122,12 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
         });
 
         var json = File.ReadAllText(path + ".provenance.json");
-        Assert.Contains("\"warning\"", json);
-        Assert.Contains("Output is NOT the original", json);
+        await Assert.That(json).Contains("\"warning\"");
+        await Assert.That(json).Contains("Output is NOT the original");
     }
 
-    [Fact]
-    public void Write_sidecar_includes_contributors_list()
+    [Test]
+    public async Task Write_sidecar_includes_contributors_list()
     {
         var path = OutputPath("artifact.jpg");
         ProvenanceSidecarWriter.Write(path, new ProvenanceSidecar
@@ -144,12 +144,12 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
         });
 
         var json = File.ReadAllText(path + ".provenance.json");
-        Assert.Contains("Thumbs.db", json);
-        Assert.Contains("Stream ID: 42", json);
+        await Assert.That(json).Contains("Thumbs.db");
+        await Assert.That(json).Contains("Stream ID: 42");
     }
 
-    [Fact]
-    public void Write_convenience_overload_creates_sidecar()
+    [Test]
+    public async Task Write_convenience_overload_creates_sidecar()
     {
         var path = OutputPath("artifact.jpg");
         ProvenanceSidecarWriter.Write(
@@ -162,11 +162,11 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
             outputFormat:           "image/jpeg",
             byteCount:              1024);
 
-        Assert.True(File.Exists(path + ".provenance.json"));
+        await Assert.That(File.Exists(path + ".provenance.json")).IsTrue();
     }
 
-    [Fact]
-    public void Write_convenience_overload_serializes_exportedAt_as_iso8601()
+    [Test]
+    public async Task Write_convenience_overload_serializes_exportedAt_as_iso8601()
     {
         var before = DateTime.UtcNow.AddSeconds(-1);
         var path   = OutputPath("artifact.jpg");
@@ -185,14 +185,14 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
         var doc  = JsonDocument.Parse(json);
         var exportedAt = doc.RootElement.GetProperty("exportedAt").GetString()!;
         var parsed = DateTime.Parse(exportedAt, null, System.Globalization.DateTimeStyles.RoundtripKind);
-        Assert.InRange(parsed.ToUniversalTime(), before, after);
+        await Assert.That(parsed.ToUniversalTime()).IsBetween(before,after);
     }
 
-    [Fact]
-    public void Write_is_silent_on_invalid_path()
+    [Test]
+    public async Task Write_is_silent_on_invalid_path()
     {
         var badPath = Path.Combine("/nonexistent/path/that/cannot/exist", "artifact.jpg");
-        var ex = Record.Exception(() =>
+        await Assert.That(() =>
             ProvenanceSidecarWriter.Write(badPath, new ProvenanceSidecar
             {
                 ExportedAt             = "2026-01-01T00:00:00Z",
@@ -203,13 +203,11 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
                 ReconstructionCategory = "exact-artifact-extraction",
                 OutputFormat           = "image/jpeg",
                 ByteCount              = 0
-            }));
-
-        Assert.Null(ex);
+            })).ThrowsNothing();
     }
 
-    [Fact]
-    public void Write_sidecar_path_is_output_path_plus_provenance_json()
+    [Test]
+    public async Task Write_sidecar_path_is_output_path_plus_provenance_json()
     {
         var path = OutputPath("my_export__lofi_reconstruction__thumbcache.png");
         ProvenanceSidecarWriter.Write(path, new ProvenanceSidecar
@@ -225,7 +223,7 @@ public sealed class ProvenanceSidecarWriterTests : IDisposable
         });
 
         var expected = path + ".provenance.json";
-        Assert.True(File.Exists(expected));
-        Assert.False(File.Exists(Path.ChangeExtension(path, ".provenance.json")));
+        await Assert.That(File.Exists(expected)).IsTrue();
+        await Assert.That(File.Exists(Path.ChangeExtension(path, ".provenance.json"))).IsFalse();
     }
 }

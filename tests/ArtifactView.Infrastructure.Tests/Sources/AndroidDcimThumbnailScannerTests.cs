@@ -1,5 +1,6 @@
+using System.IO;
 using ArtifactView.Infrastructure.Sources.Android;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Sources;
 
@@ -26,16 +27,16 @@ public sealed class AndroidDcimThumbnailScannerTests : IDisposable
         File.WriteAllBytes(Path.Combine(dir, name), [0xFF, 0xD8, 0xFF, 0xE0]); // minimal JPEG header
     }
 
-    [Fact]
-    public void FindThumbnailsDir_finds_dotThumbnails()
+    [Test]
+    public async Task FindThumbnailsDir_finds_dotThumbnails()
     {
         CreateDir(".thumbnails");
         var result = AndroidDcimThumbnailScanner.FindThumbnailsDir(_tempRoot);
         Assert.NotNull(result);
-        Assert.Contains(".thumbnails", result);
+        await Assert.That(result).Contains(".thumbnails");
     }
 
-    [Fact]
+    [Test]
     public void FindThumbnailsDir_finds_Thumbnails_case_variant()
     {
         CreateDir("Thumbnails");
@@ -43,22 +44,22 @@ public sealed class AndroidDcimThumbnailScannerTests : IDisposable
         Assert.NotNull(result);
     }
 
-    [Fact]
+    [Test]
     public void FindThumbnailsDir_returns_null_when_absent()
     {
         var result = AndroidDcimThumbnailScanner.FindThumbnailsDir(_tempRoot);
         Assert.Null(result);
     }
 
-    [Fact]
-    public void Scan_returns_empty_for_missing_directory()
+    [Test]
+    public async Task Scan_returns_empty_for_missing_directory()
     {
         var result = AndroidDcimThumbnailScanner.Scan(Path.Combine(_tempRoot, "nonexistent"));
-        Assert.Empty(result);
+        await Assert.That(result).IsEmpty();
     }
 
-    [Fact]
-    public void Scan_returns_entry_for_each_jpg()
+    [Test]
+    public async Task Scan_returns_entry_for_each_jpg()
     {
         var thumbDir = CreateDir(".thumbnails");
         TouchFile(thumbDir, "100000000001.jpg");
@@ -66,22 +67,22 @@ public sealed class AndroidDcimThumbnailScannerTests : IDisposable
 
         var result = AndroidDcimThumbnailScanner.Scan(thumbDir);
 
-        Assert.Equal(2, result.Count);
+        await Assert.That(result.Count).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Scan_sets_thumbnail_path_to_physical_file()
+    [Test]
+    public async Task Scan_sets_thumbnail_path_to_physical_file()
     {
         var thumbDir = CreateDir(".thumbnails");
         TouchFile(thumbDir, "100000000001.jpg");
 
         var result = AndroidDcimThumbnailScanner.Scan(thumbDir);
 
-        Assert.Equal(Path.Combine(thumbDir, "100000000001.jpg"), result[0].ThumbnailPath);
+        await Assert.That(result[0].ThumbnailPath).IsEqualTo(Path.Combine(thumbDir, "100000000001.jpg"));
     }
 
-    [Fact]
-    public void Numeric_only_stem_produces_null_original_filename()
+    [Test]
+    public async Task Numeric_only_stem_produces_null_original_filename()
     {
         var thumbDir = CreateDir(".thumbnails");
         // Purely numeric = MediaStore ID, original filename unknowable.
@@ -89,12 +90,12 @@ public sealed class AndroidDcimThumbnailScannerTests : IDisposable
 
         var result = AndroidDcimThumbnailScanner.Scan(thumbDir);
 
-        Assert.Single(result);
+        await Assert.That(result).HasSingleItem();
         Assert.Null(result[0].OriginalFilename);
     }
 
-    [Fact]
-    public void Non_numeric_stem_produces_inferred_filename()
+    [Test]
+    public async Task Non_numeric_stem_produces_inferred_filename()
     {
         var thumbDir = CreateDir(".thumbnails");
         // Non-numeric stem may be the original filename without extension.
@@ -102,8 +103,8 @@ public sealed class AndroidDcimThumbnailScannerTests : IDisposable
 
         var result = AndroidDcimThumbnailScanner.Scan(thumbDir);
 
-        Assert.Single(result);
+        await Assert.That(result).HasSingleItem();
         Assert.NotNull(result[0].OriginalFilename);
-        Assert.Contains("IMG_20210101_120000", result[0].OriginalFilename);
+        await Assert.That(result[0].OriginalFilename).Contains("IMG_20210101_120000");
     }
 }

@@ -1,6 +1,7 @@
+using System.IO;
 using ArtifactView.Contracts.Processing;
 using ArtifactView.Infrastructure.Plugins.Adapters;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Plugins;
 
@@ -49,67 +50,67 @@ public sealed class EmbeddedArtifactExtractorPluginTests : IDisposable
 
     // ── Supports ────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Supports_returns_false_for_non_jpeg_extension()
+    [Test]
+    public async Task Supports_returns_false_for_non_jpeg_extension()
     {
-        Assert.False(_plugin.Supports(new SimpleContext("/some/file.png", [])));
+        await Assert.That(_plugin.Supports(new SimpleContext("/some/file.png", []))).IsFalse();
     }
 
-    [Fact]
-    public void Supports_returns_false_for_missing_file()
+    [Test]
+    public async Task Supports_returns_false_for_missing_file()
     {
-        Assert.False(_plugin.Supports(new SimpleContext("/nonexistent.jpg", [])));
+        await Assert.That(_plugin.Supports(new SimpleContext("/nonexistent.jpg", []))).IsFalse();
     }
 
-    [Fact]
-    public void Supports_returns_false_for_jpeg_with_no_artifacts()
+    [Test]
+    public async Task Supports_returns_false_for_jpeg_with_no_artifacts()
     {
         var path = WriteTempJpeg(MinimalJpeg());
-        Assert.False(_plugin.Supports(Ctx(path)));
+        await Assert.That(_plugin.Supports(Ctx(path))).IsFalse();
     }
 
-    [Fact]
-    public void Supports_returns_true_for_jpeg_with_mp4_trailer()
+    [Test]
+    public async Task Supports_returns_true_for_jpeg_with_mp4_trailer()
     {
         var path = WriteTempJpeg(MinimalJpeg(FtypBox()));
-        Assert.True(_plugin.Supports(Ctx(path)));
+        await Assert.That(_plugin.Supports(Ctx(path))).IsTrue();
     }
 
-    [Fact]
-    public void Supports_returns_true_for_jpeg_with_secondary_jpeg_trailer()
+    [Test]
+    public async Task Supports_returns_true_for_jpeg_with_secondary_jpeg_trailer()
     {
         byte[] trailingJpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x00, 0x00];
         var path = WriteTempJpeg(MinimalJpeg(trailingJpeg));
-        Assert.True(_plugin.Supports(Ctx(path)));
+        await Assert.That(_plugin.Supports(Ctx(path))).IsTrue();
     }
 
     // ── ProcessAsync ────────────────────────────────────────────────────────
 
-    [Fact]
+    [Test]
     public async Task ProcessAsync_returns_no_artifacts_for_clean_jpeg()
     {
         var path   = WriteTempJpeg(MinimalJpeg());
         var result = await _plugin.ProcessAsync(Ctx(path), CancellationToken.None);
 
-        Assert.Equal("no-extractable-artifacts", result.ResultKind);
+        await Assert.That(result.ResultKind).IsEqualTo("no-extractable-artifacts");
         Assert.Null(result.OutputPath);
-        Assert.Empty(result.OutputPaths);
+        await Assert.That(result.OutputPaths).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task ProcessAsync_extracts_mp4_trailer_as_motion_photo()
     {
         var path   = WriteTempJpeg(MinimalJpeg(FtypBox()));
         var result = await _plugin.ProcessAsync(Ctx(path), CancellationToken.None);
 
-        Assert.Equal("artifact-extraction", result.ResultKind);
+        await Assert.That(result.ResultKind).IsEqualTo("artifact-extraction");
         Assert.NotNull(result.OutputPath);
-        Assert.NotEmpty(result.OutputPaths);
-        Assert.True(result.OutputPath!.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
-                 || result.OutputPaths.Any(p => p.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)));
+        await Assert.That(result.OutputPaths).IsNotEmpty();
+        await Assert.That(result.OutputPath!.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+                 || result.OutputPaths.Any(p => p.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task ProcessAsync_output_file_contains_exact_bytes()
     {
         var ftyp = FtypBox();
@@ -118,34 +119,34 @@ public sealed class EmbeddedArtifactExtractorPluginTests : IDisposable
         var result = await _plugin.ProcessAsync(Ctx(path), CancellationToken.None);
 
         Assert.NotNull(result.OutputPath);
-        Assert.True(File.Exists(result.OutputPath));
+        await Assert.That(File.Exists(result.OutputPath)).IsTrue();
 
         var written = File.ReadAllBytes(result.OutputPath!);
-        Assert.Equal(ftyp, written);
+        await Assert.That(written).IsEquivalentTo(ftyp);
 
         // Cleanup extracted file.
         File.Delete(result.OutputPath!);
     }
 
-    [Fact]
+    [Test]
     public async Task ProcessAsync_output_paths_equal_output_path_for_single_artifact()
     {
         var path   = WriteTempJpeg(MinimalJpeg(FtypBox()));
         var result = await _plugin.ProcessAsync(Ctx(path), CancellationToken.None);
 
         if (result.OutputPaths.Count == 1)
-            Assert.Equal(result.OutputPath, result.OutputPaths[0]);
+            await Assert.That(result.OutputPaths[0]).IsEqualTo(result.OutputPath);
 
         // Cleanup.
         foreach (var f in result.OutputPaths)
             try { File.Delete(f); } catch { }
     }
 
-    [Fact]
-    public void IsEvidenceSafe_is_true()
-        => Assert.True(_plugin.IsEvidenceSafe);
+    [Test]
+    public async Task IsEvidenceSafe_is_true()
+        => await Assert.That(_plugin.IsEvidenceSafe).IsTrue();
 
-    [Fact]
-    public void Id_is_stable()
-        => Assert.Equal("core.processor.embedded-artifact-extractor", _plugin.Id);
+    [Test]
+    public async Task Id_is_stable()
+        => await Assert.That(_plugin.Id).IsEqualTo("core.processor.embedded-artifact-extractor");
 }

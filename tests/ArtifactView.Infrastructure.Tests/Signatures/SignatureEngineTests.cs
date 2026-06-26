@@ -1,13 +1,12 @@
 using ArtifactView.Contracts.Signatures;
 using ArtifactView.Infrastructure.Signatures;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Signatures;
 
 public sealed class SignatureEngineTests
 {
     // ── Stub helpers ────────────────────────────────────────────────────────
-
     private static SignatureMatchResult MakeMatch(string profileId, string name, MatchStrength strength) =>
         new() { ProfileId = profileId, ProfileName = name, Strength = strength };
 
@@ -50,48 +49,48 @@ public sealed class SignatureEngineTests
 
     // ── No matches ──────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Run_returns_empty_when_no_packs()
+    [Test]
+    public async Task Run_returns_empty_when_no_packs()
     {
         var engine = new SignatureEngine([]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Empty(result.AllMatches);
+        await Assert.That(result.AllMatches).IsEmpty();
         Assert.Null(result.TopMatch);
-        Assert.Empty(result.Conflicts);
-        Assert.False(result.HasConflicts);
+        await Assert.That(result.Conflicts).IsEmpty();
+        await Assert.That(result.HasConflicts).IsFalse();
     }
 
-    [Fact]
-    public void Run_filters_out_none_strength_matches()
+    [Test]
+    public async Task Run_filters_out_none_strength_matches()
     {
         var pack = new StubPack(MakeMatch("platform.x", "X", MatchStrength.None));
         var engine = new SignatureEngine([pack]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Empty(result.AllMatches);
+        await Assert.That(result.AllMatches).IsEmpty();
         Assert.Null(result.TopMatch);
     }
 
     // ── Single match ────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Run_returns_single_match_as_top()
+    [Test]
+    public async Task Run_returns_single_match_as_top()
     {
         var pack = new StubPack(MakeMatch("platform.iphone", "iPhone", MatchStrength.Strong));
         var engine = new SignatureEngine([pack]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Single(result.AllMatches);
+        await Assert.That(result.AllMatches).HasSingleItem();
         Assert.NotNull(result.TopMatch);
-        Assert.Equal("platform.iphone", result.TopMatch!.ProfileId);
-        Assert.Empty(result.Conflicts);
+        await Assert.That(result.TopMatch!.ProfileId).IsEqualTo("platform.iphone");
+        await Assert.That(result.Conflicts).IsEmpty();
     }
 
     // ── Top match selection ──────────────────────────────────────────────────
 
-    [Fact]
-    public void Run_top_match_is_highest_strength()
+    [Test]
+    public async Task Run_top_match_is_highest_strength()
     {
         var pack = new StubPack(
             MakeMatch("workflow.instagram", "Instagram", MatchStrength.Moderate),
@@ -99,11 +98,11 @@ public sealed class SignatureEngineTests
         var engine = new SignatureEngine([pack]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Equal("platform.iphone", result.TopMatch!.ProfileId);
+        await Assert.That(result.TopMatch!.ProfileId).IsEqualTo("platform.iphone");
     }
 
-    [Fact]
-    public void Run_top_match_breaks_ties_by_profile_id_alphabetically()
+    [Test]
+    public async Task Run_top_match_breaks_ties_by_profile_id_alphabetically()
     {
         var pack = new StubPack(
             MakeMatch("workflow.zzz", "ZZZ", MatchStrength.Strong),
@@ -111,13 +110,13 @@ public sealed class SignatureEngineTests
         var engine = new SignatureEngine([pack]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Equal("platform.aaa", result.TopMatch!.ProfileId);
+        await Assert.That(result.TopMatch!.ProfileId).IsEqualTo("platform.aaa");
     }
 
     // ── Conflict detection ──────────────────────────────────────────────────
 
-    [Fact]
-    public void Run_no_conflict_when_only_one_moderate_match_per_category()
+    [Test]
+    public async Task Run_no_conflict_when_only_one_moderate_match_per_category()
     {
         var pack = new StubPack(
             MakeMatch("platform.iphone",    "iPhone",    MatchStrength.Strong),
@@ -125,11 +124,11 @@ public sealed class SignatureEngineTests
         var engine = new SignatureEngine([pack]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Empty(result.Conflicts);
+        await Assert.That(result.Conflicts).IsEmpty();
     }
 
-    [Fact]
-    public void Run_conflict_when_two_moderate_matches_same_category()
+    [Test]
+    public async Task Run_conflict_when_two_moderate_matches_same_category()
     {
         var pack = new StubPack(
             MakeMatch("platform.iphone",       "iPhone",  MatchStrength.Strong),
@@ -137,14 +136,14 @@ public sealed class SignatureEngineTests
         var engine = new SignatureEngine([pack]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.True(result.HasConflicts);
-        Assert.Single(result.Conflicts);
-        Assert.Equal("platform", result.Conflicts[0].Category);
-        Assert.Equal(2, result.Conflicts[0].Matches.Count);
+        await Assert.That(result.HasConflicts).IsTrue();
+        await Assert.That(result.Conflicts).HasSingleItem();
+        await Assert.That(result.Conflicts[0].Category).IsEqualTo("platform");
+        await Assert.That(result.Conflicts[0].Matches.Count).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Run_weak_match_does_not_trigger_conflict()
+    [Test]
+    public async Task Run_weak_match_does_not_trigger_conflict()
     {
         var pack = new StubPack(
             MakeMatch("platform.iphone",       "iPhone", MatchStrength.Strong),
@@ -152,32 +151,32 @@ public sealed class SignatureEngineTests
         var engine = new SignatureEngine([pack]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Empty(result.Conflicts);
+        await Assert.That(result.Conflicts).IsEmpty();
     }
 
     // ── Pack fault isolation ─────────────────────────────────────────────────
 
-    [Fact]
-    public void Run_continues_when_pack_throws()
+    [Test]
+    public async Task Run_continues_when_pack_throws()
     {
         var good   = new StubPack(MakeMatch("platform.iphone", "iPhone", MatchStrength.Strong));
         var engine = new SignatureEngine([new ThrowingPack(), good]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Single(result.AllMatches);
-        Assert.Equal("platform.iphone", result.TopMatch!.ProfileId);
+        await Assert.That(result.AllMatches).HasSingleItem();
+        await Assert.That(result.TopMatch!.ProfileId).IsEqualTo("platform.iphone");
     }
 
     // ── Multiple packs ───────────────────────────────────────────────────────
 
-    [Fact]
-    public void Run_aggregates_results_from_multiple_packs()
+    [Test]
+    public async Task Run_aggregates_results_from_multiple_packs()
     {
         var pack1  = new StubPack(MakeMatch("platform.iphone",    "iPhone",    MatchStrength.Strong));
         var pack2  = new StubPack(MakeMatch("workflow.lightroom", "Lightroom", MatchStrength.Strong));
         var engine = new SignatureEngine([pack1, pack2]);
         var result = engine.Run(EmptyCtx());
 
-        Assert.Equal(2, result.AllMatches.Count);
+        await Assert.That(result.AllMatches.Count).IsEqualTo(2);
     }
 }

@@ -1,6 +1,7 @@
+using System.IO;
 using ArtifactView.Core.Models;
 using ArtifactView.Infrastructure.Analysis;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
@@ -26,70 +27,70 @@ public sealed class JpegIntegrityAnalyzerTests : IDisposable
 
     // ── too small ────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void TooSmall_ReturnsCriticalFinding()
+    [Test]
+    public async Task TooSmall_ReturnsCriticalFinding()
     {
         var path = TempFile(0xFF, 0xD8); // only SOI — under the 4-byte minimum
         var findings = JpegIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("jpeg-too-small", findings[0].Id);
-        Assert.Equal(ReviewPriority.Critical, findings[0].ReviewPriority);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("jpeg-too-small");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.Critical);
     }
 
     // ── missing / wrong SOI ──────────────────────────────────────────────────
 
-    [Fact]
-    public void WrongSoi_ReturnsHighFinding()
+    [Test]
+    public async Task WrongSoi_ReturnsHighFinding()
     {
         var path = TempFile(0x01, 0x02, 0x03, 0x04);
         var findings = JpegIntegrityAnalyzer.Analyze(path);
-        Assert.Single(findings);
-        Assert.Equal("jpeg-missing-soi", findings[0].Id);
-        Assert.Equal(ReviewPriority.High, findings[0].ReviewPriority);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("jpeg-missing-soi");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.High);
     }
 
     // ── intact structure ─────────────────────────────────────────────────────
 
-    [Fact]
-    public void ValidJpeg_ReturnsStructureOk()
+    [Test]
+    public async Task ValidJpeg_ReturnsStructureOk()
     {
         // Minimal valid JPEG: SOI + one byte + EOI
         var path = TempFile(0xFF, 0xD8, 0xAB, 0xFF, 0xD9);
         var findings = JpegIntegrityAnalyzer.Analyze(path);
         var ok = findings.FirstOrDefault(f => f.Id == "jpeg-structure-ok");
         Assert.NotNull(ok);
-        Assert.Equal(ReviewPriority.None, ok.ReviewPriority);
+        await Assert.That(ok.ReviewPriority).IsEqualTo(ReviewPriority.None);
     }
 
     // ── truncated (EOI absent) ───────────────────────────────────────────────
 
-    [Fact]
-    public void TruncatedJpeg_ReturnsMissingEoi()
+    [Test]
+    public async Task TruncatedJpeg_ReturnsMissingEoi()
     {
         // SOI + image data, no EOI at all
         var path = TempFile(0xFF, 0xD8, 0xAB, 0xCD, 0xEF, 0x01);
         var findings = JpegIntegrityAnalyzer.Analyze(path);
         var f = findings.FirstOrDefault(f => f.Id == "jpeg-missing-eoi");
         Assert.NotNull(f);
-        Assert.Equal(ReviewPriority.Medium, f.ReviewPriority);
+        await Assert.That(f.ReviewPriority).IsEqualTo(ReviewPriority.Medium);
     }
 
     // ── appended data ────────────────────────────────────────────────────────
 
-    [Fact]
-    public void AppendedData_ReturnsAppendedDataFinding()
+    [Test]
+    public async Task AppendedData_ReturnsAppendedDataFinding()
     {
         // SOI + EOI + 3 garbage bytes appended after
         var path = TempFile(0xFF, 0xD8, 0xFF, 0xD9, 0x00, 0x01, 0x02);
         var findings = JpegIntegrityAnalyzer.Analyze(path);
         var f = findings.FirstOrDefault(f => f.Id == "jpeg-appended-data");
         Assert.NotNull(f);
-        Assert.Equal(ReviewPriority.Medium, f.ReviewPriority);
-        Assert.Contains("3 byte(s)", f.Observation);
+        await Assert.That(f.ReviewPriority).IsEqualTo(ReviewPriority.Medium);
+        await Assert.That(f.Observation).Contains("3 byte(s)");
     }
 
-    [Fact]
-    public void AppendedData_LargeAppend_CountedCorrectly()
+    [Test]
+    public async Task AppendedData_LargeAppend_CountedCorrectly()
     {
         // 10 bytes appended after EOI
         var payload = new byte[] { 0xFF, 0xD8 }
@@ -101,14 +102,14 @@ public sealed class JpegIntegrityAnalyzerTests : IDisposable
         var findings = JpegIntegrityAnalyzer.Analyze(path);
         var f = findings.FirstOrDefault(f => f.Id == "jpeg-appended-data");
         Assert.NotNull(f);
-        Assert.Equal("jpeg-appended-data", f.Id);
-        Assert.Contains("10 byte(s)", f.Observation);
+        await Assert.That(f.Id).IsEqualTo("jpeg-appended-data");
+        await Assert.That(f.Observation).Contains("10 byte(s)");
     }
 
     // ── segment walk: truncated segment ─────────────────────────────────────
 
-    [Fact]
-    public void TruncatedSegment_ReturnsHighFinding()
+    [Test]
+    public async Task TruncatedSegment_ReturnsHighFinding()
     {
         // SOI + APP0 marker claiming 100 bytes of data, but file ends after 4 bytes.
         // segLen = 0x0064 = 100 means 98 bytes of data follow the length field.
@@ -119,14 +120,13 @@ public sealed class JpegIntegrityAnalyzerTests : IDisposable
             0x01, 0x02        // truncated — only 2 of 98 expected bytes
         );
         var findings = JpegIntegrityAnalyzer.Analyze(path);
-        Assert.Contains(findings, f => f.Id == "jpeg-truncated-segment");
-        Assert.All(
-            findings.Where(f => f.Id == "jpeg-truncated-segment"),
-            f => Assert.Equal(ReviewPriority.High, f.ReviewPriority));
+        await Assert.That(findings).Contains(f => f.Id == "jpeg-truncated-segment");
+        foreach (var f in findings.Where(f => f.Id == "jpeg-truncated-segment"))
+            await Assert.That(f.ReviewPriority).IsEqualTo(ReviewPriority.High);
     }
 
-    [Fact]
-    public void MalformedSegmentLength_ReturnsHighFinding()
+    [Test]
+    public async Task MalformedSegmentLength_ReturnsHighFinding()
     {
         // APP0 with length = 1 — below the 2-byte minimum.
         var path = TempFile(
@@ -136,15 +136,14 @@ public sealed class JpegIntegrityAnalyzerTests : IDisposable
             0xFF, 0xD9        // EOI (won't be reached through the walk)
         );
         var findings = JpegIntegrityAnalyzer.Analyze(path);
-        Assert.Contains(findings, f => f.Id == "jpeg-malformed-segment-length");
-        Assert.Equal(ReviewPriority.High,
-            findings.First(f => f.Id == "jpeg-malformed-segment-length").ReviewPriority);
+        await Assert.That(findings).Contains(f => f.Id == "jpeg-malformed-segment-length");
+        await Assert.That(findings.First(f => f.Id == "jpeg-malformed-segment-length").ReviewPriority).IsEqualTo(ReviewPriority.High);
     }
 
     // ── segment walk: SOS without SOF ────────────────────────────────────────
 
-    [Fact]
-    public void SosWithoutSof_ReturnsMediumFinding()
+    [Test]
+    public async Task SosWithoutSof_ReturnsMediumFinding()
     {
         // SOI + SOS immediately (no SOF anywhere before it).
         // Walker sees SOS, sets sosSeen=true; sofSeen remains false.
@@ -155,9 +154,8 @@ public sealed class JpegIntegrityAnalyzerTests : IDisposable
             0xFF, 0xD9                                // EOI in the tail
         );
         var findings = JpegIntegrityAnalyzer.Analyze(path);
-        Assert.Contains(findings, f => f.Id == "jpeg-no-sof-before-sos");
-        Assert.Equal(ReviewPriority.Medium,
-            findings.First(f => f.Id == "jpeg-no-sof-before-sos").ReviewPriority);
+        await Assert.That(findings).Contains(f => f.Id == "jpeg-no-sof-before-sos");
+        await Assert.That(findings.First(f => f.Id == "jpeg-no-sof-before-sos").ReviewPriority).IsEqualTo(ReviewPriority.Medium);
     }
     // ── APP segment inventory ─────────────────────────────────────────────────
 
@@ -181,50 +179,50 @@ public sealed class JpegIntegrityAnalyzerTests : IDisposable
         0x6E, 0x73, 0x2E, 0x61, 0x64, 0x6F, 0x62, 0x65, 0x2E, 0x63, 0x6F, 0x6D  // "ns.adobe.com"
     ];
 
-    [Fact]
-    public void NormalExif_ReturnsMetadataLayersFinding()
+    [Test]
+    public async Task NormalExif_ReturnsMetadataLayersFinding()
     {
         var path = TempFile(Jpeg(App1Exif()));
         var findings = JpegIntegrityAnalyzer.Analyze(path);
         var layer = findings.FirstOrDefault(f => f.Id == "jpeg-metadata-layers");
         Assert.NotNull(layer);
-        Assert.Contains("EXIF", layer.Observation);
-        Assert.DoesNotContain(findings, f => f.Id == "jpeg-no-app-metadata");
+        await Assert.That(layer.Observation).Contains("EXIF");
+        await Assert.That(findings).DoesNotContain(f => f.Id == "jpeg-no-app-metadata");
     }
 
-    [Fact]
-    public void DuplicateExif_ReturnsDuplicateExifFinding()
+    [Test]
+    public async Task DuplicateExif_ReturnsDuplicateExifFinding()
     {
         var path = TempFile(Jpeg([.. App1Exif(), .. App1Exif()]));
         var findings = JpegIntegrityAnalyzer.Analyze(path);
         var dup = findings.FirstOrDefault(f => f.Id == "jpeg-duplicate-exif");
         Assert.NotNull(dup);
-        Assert.Equal(ReviewPriority.Medium, dup.ReviewPriority);
-        Assert.Contains("2 times", dup.Observation);
+        await Assert.That(dup.ReviewPriority).IsEqualTo(ReviewPriority.Medium);
+        await Assert.That(dup.Observation).Contains("2 times");
     }
 
-    [Fact]
-    public void ExifPlusXmp_DoesNotFlagDuplicateExif()
+    [Test]
+    public async Task ExifPlusXmp_DoesNotFlagDuplicateExif()
     {
         // EXIF + XMP in two APP1 segments is completely normal.
         var path = TempFile(Jpeg([.. App1Exif(), .. App1Xmp()]));
         var findings = JpegIntegrityAnalyzer.Analyze(path);
-        Assert.DoesNotContain(findings, f => f.Id == "jpeg-duplicate-exif");
+        await Assert.That(findings).DoesNotContain(f => f.Id == "jpeg-duplicate-exif");
         var layer = findings.FirstOrDefault(f => f.Id == "jpeg-metadata-layers");
         Assert.NotNull(layer);
-        Assert.Contains("EXIF", layer.Observation);
-        Assert.Contains("XMP",  layer.Observation);
+        await Assert.That(layer.Observation).Contains("EXIF");
+        await Assert.That(layer.Observation).Contains("XMP");
     }
 
-    [Fact]
-    public void NoAppMetadata_ReturnsNoAppMetadataFinding()
+    [Test]
+    public async Task NoAppMetadata_ReturnsNoAppMetadataFinding()
     {
         // SOI + EOI only — no APP segments at all.
         var path = TempFile(0xFF, 0xD8, 0xFF, 0xD9);
         var findings = JpegIntegrityAnalyzer.Analyze(path);
         var noApp = findings.FirstOrDefault(f => f.Id == "jpeg-no-app-metadata");
         Assert.NotNull(noApp);
-        Assert.Equal(ReviewPriority.Low, noApp.ReviewPriority);
-        Assert.DoesNotContain(findings, f => f.Id == "jpeg-metadata-layers");
+        await Assert.That(noApp.ReviewPriority).IsEqualTo(ReviewPriority.Low);
+        await Assert.That(findings).DoesNotContain(f => f.Id == "jpeg-metadata-layers");
     }
 }

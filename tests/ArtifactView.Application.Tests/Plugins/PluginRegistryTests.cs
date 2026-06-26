@@ -1,8 +1,9 @@
+using System.IO;
 using System.Text.Json;
 using ArtifactView.Application.Plugins;
 using ArtifactView.Application.Settings;
 using ArtifactView.Infrastructure.Plugins;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Application.Tests.Plugins;
 
@@ -29,8 +30,8 @@ public sealed class PluginRegistryTests : IDisposable
 
     // ── CoreOnly ─────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void CoreOnly_BlocksAllPlugins()
+    [Test]
+    public async Task CoreOnly_BlocksAllPlugins()
     {
         WriteManifest("p1", new { Id = "a", Name = "A", Version = "1.0", Author = "x", License = "MIT", IsOpenSource = true });
         WriteManifest("p2", new { Id = "b", Name = "B", Version = "1.0", Author = "x", License = "MIT", SignatureInfo = "signed" });
@@ -38,15 +39,15 @@ public sealed class PluginRegistryTests : IDisposable
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.CoreOnly);
 
-        Assert.Empty(reg.Permitted);
-        Assert.False(reg.IsRegistered("a"));
-        Assert.False(reg.IsRegistered("b"));
+        await Assert.That(reg.Permitted).IsEmpty();
+        await Assert.That(reg.IsRegistered("a")).IsFalse();
+        await Assert.That(reg.IsRegistered("b")).IsFalse();
     }
 
     // ── CoreAndOpenSource ─────────────────────────────────────────────────────
 
-    [Fact]
-    public void CoreAndOpenSource_AllowsOpenSourceOnly()
+    [Test]
+    public async Task CoreAndOpenSource_AllowsOpenSourceOnly()
     {
         WriteManifest("oss",    new { Id = "oss",    Name = "OSS",    Version = "1.0", Author = "x", License = "MIT",        IsOpenSource = true  });
         WriteManifest("closed", new { Id = "closed", Name = "Closed", Version = "1.0", Author = "x", License = "Proprietary", IsOpenSource = false });
@@ -54,15 +55,15 @@ public sealed class PluginRegistryTests : IDisposable
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.CoreAndOpenSource);
 
-        Assert.Single(reg.Permitted);
-        Assert.True(reg.IsRegistered("oss"));
-        Assert.False(reg.IsRegistered("closed"));
+        await Assert.That(reg.Permitted).HasSingleItem();
+        await Assert.That(reg.IsRegistered("oss")).IsTrue();
+        await Assert.That(reg.IsRegistered("closed")).IsFalse();
     }
 
     // ── CoreAndSigned ─────────────────────────────────────────────────────────
 
-    [Fact]
-    public void CoreAndSigned_AllowsSignedOnly()
+    [Test]
+    public async Task CoreAndSigned_AllowsSignedOnly()
     {
         WriteManifest("signed",   new { Id = "signed",   Name = "Signed",   Version = "1.0", Author = "x", License = "MIT", SignatureInfo = "abc123" });
         WriteManifest("unsigned", new { Id = "unsigned", Name = "Unsigned", Version = "1.0", Author = "x", License = "MIT" });
@@ -70,15 +71,15 @@ public sealed class PluginRegistryTests : IDisposable
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.CoreAndSigned);
 
-        Assert.Single(reg.Permitted);
-        Assert.True(reg.IsRegistered("signed"));
-        Assert.False(reg.IsRegistered("unsigned"));
+        await Assert.That(reg.Permitted).HasSingleItem();
+        await Assert.That(reg.IsRegistered("signed")).IsTrue();
+        await Assert.That(reg.IsRegistered("unsigned")).IsFalse();
     }
 
     // ── Full ──────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Full_AllowsAllPlugins()
+    [Test]
+    public async Task Full_AllowsAllPlugins()
     {
         WriteManifest("p1", new { Id = "a", Name = "A", Version = "1.0", Author = "x", License = "MIT" });
         WriteManifest("p2", new { Id = "b", Name = "B", Version = "1.0", Author = "x", License = "Proprietary" });
@@ -86,54 +87,54 @@ public sealed class PluginRegistryTests : IDisposable
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.Full);
 
-        Assert.Equal(2, reg.Permitted.Count);
-        Assert.True(reg.IsRegistered("a"));
-        Assert.True(reg.IsRegistered("b"));
+        await Assert.That(reg.Permitted.Count).IsEqualTo(2);
+        await Assert.That(reg.IsRegistered("a")).IsTrue();
+        await Assert.That(reg.IsRegistered("b")).IsTrue();
     }
 
     // ── Reload clears state ───────────────────────────────────────────────────
 
-    [Fact]
-    public void Load_ClearsPreviousState_OnReload()
+    [Test]
+    public async Task Load_ClearsPreviousState_OnReload()
     {
         WriteManifest("p1", new { Id = "first", Name = "First", Version = "1.0", Author = "x", License = "MIT" });
 
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.Full);
-        Assert.Single(reg.Permitted);
+        await Assert.That(reg.Permitted).HasSingleItem();
 
         // Switch to CoreOnly — previous permitted set must be wiped.
         reg.Load(_tempDir, PluginPolicy.CoreOnly);
-        Assert.Empty(reg.Permitted);
-        Assert.False(reg.IsRegistered("first"));
+        await Assert.That(reg.Permitted).IsEmpty();
+        await Assert.That(reg.IsRegistered("first")).IsFalse();
     }
 
     // ── Empty folder ─────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Load_EmptyFolder_PermitsNothing()
+    [Test]
+    public async Task Load_EmptyFolder_PermitsNothing()
     {
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.Full);
 
-        Assert.Empty(reg.Permitted);
+        await Assert.That(reg.Permitted).IsEmpty();
     }
 
     // ── Non-existent folder ───────────────────────────────────────────────────
 
-    [Fact]
-    public void Load_NonExistentFolder_PermitsNothing()
+    [Test]
+    public async Task Load_NonExistentFolder_PermitsNothing()
     {
         var reg = MakeRegistry();
         reg.Load(Path.Combine(_tempDir, "missing"), PluginPolicy.Full);
 
-        Assert.Empty(reg.Permitted);
+        await Assert.That(reg.Permitted).IsEmpty();
     }
 
     // ── Mixed open-source + signed under CoreAndOpenSource ───────────────────
 
-    [Fact]
-    public void CoreAndOpenSource_AllowsOssSignedPlugin()
+    [Test]
+    public async Task CoreAndOpenSource_AllowsOssSignedPlugin()
     {
         WriteManifest("both", new
         {
@@ -144,13 +145,13 @@ public sealed class PluginRegistryTests : IDisposable
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.CoreAndOpenSource);
 
-        Assert.True(reg.IsRegistered("both"));
+        await Assert.That(reg.IsRegistered("both")).IsTrue();
     }
 
     // ── CoreAndSigned rejects open-source-but-unsigned plugin ────────────────
 
-    [Fact]
-    public void CoreAndSigned_RejectsOssUnsignedPlugin()
+    [Test]
+    public async Task CoreAndSigned_RejectsOssUnsignedPlugin()
     {
         WriteManifest("oss-unsigned", new
         {
@@ -161,23 +162,23 @@ public sealed class PluginRegistryTests : IDisposable
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.CoreAndSigned);
 
-        Assert.Empty(reg.Permitted);
+        await Assert.That(reg.Permitted).IsEmpty();
     }
 
     // ── TryActivate ──────────────────────────────────────────────────────────
 
-    [Fact]
-    public void TryActivate_UnknownPluginId_ReturnsNull()
+    [Test]
+    public async Task TryActivate_UnknownPluginId_ReturnsNull()
     {
         var reg = MakeRegistry();
         reg.Load(_tempDir, PluginPolicy.Full);
 
         var result = reg.TryActivate<object>("non-existent-plugin");
-        Assert.Null(result);
+        await Assert.That(result).IsNull();
     }
 
-    [Fact]
-    public void TryActivate_PluginBlockedByPolicy_ReturnsNull()
+    [Test]
+    public async Task TryActivate_PluginBlockedByPolicy_ReturnsNull()
     {
         WriteManifest("blocked", new
         {
@@ -189,11 +190,11 @@ public sealed class PluginRegistryTests : IDisposable
         reg.Load(_tempDir, PluginPolicy.CoreOnly);
 
         var result = reg.TryActivate<object>("blocked");
-        Assert.Null(result);
+        await Assert.That(result).IsNull();
     }
 
-    [Fact]
-    public void TryActivate_PermittedPluginWithNoAssemblyInfo_ReturnsNull()
+    [Test]
+    public async Task TryActivate_PermittedPluginWithNoAssemblyInfo_ReturnsNull()
     {
         WriteManifest("no-asm", new
         {
@@ -206,6 +207,6 @@ public sealed class PluginRegistryTests : IDisposable
 
         // Manifest is permitted but has no AssemblyName — activation must return null.
         var result = reg.TryActivate<object>("no-asm");
-        Assert.Null(result);
+        await Assert.That(result).IsNull();
     }
 }

@@ -1,6 +1,7 @@
+using System.IO;
 using ArtifactView.Core.Models;
 using ArtifactView.Infrastructure.Analysis;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
@@ -22,37 +23,37 @@ public sealed class FormatMismatchAnalyzerTests : IDisposable
             if (File.Exists(f)) File.Delete(f);
     }
 
-    [Fact]
-    public void Jpeg_WithJpgExtension_ReportsMatch()
+    [Test]
+    public async Task Jpeg_WithJpgExtension_ReportsMatch()
     {
         var path = TempFile(".jpg", 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10);
         var finding = FormatMismatchAnalyzer.Analyze(path);
         Assert.NotNull(finding);
-        Assert.Equal("format-match", finding.Id);
-        Assert.Equal(ReviewPriority.None, finding.ReviewPriority);
+        await Assert.That(finding.Id).IsEqualTo("format-match");
+        await Assert.That(finding.ReviewPriority).IsEqualTo(ReviewPriority.None);
     }
 
-    [Fact]
-    public void Png_WithJpgExtension_ReportsMismatch()
+    [Test]
+    public async Task Png_WithJpgExtension_ReportsMismatch()
     {
         // PNG magic bytes but .jpg extension
         var path = TempFile(".jpg", 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
         var finding = FormatMismatchAnalyzer.Analyze(path);
         Assert.NotNull(finding);
-        Assert.Equal("format-mismatch", finding.Id);
-        Assert.Equal(ReviewPriority.High, finding.ReviewPriority);
+        await Assert.That(finding.Id).IsEqualTo("format-mismatch");
+        await Assert.That(finding.ReviewPriority).IsEqualTo(ReviewPriority.High);
     }
 
-    [Fact]
-    public void Jpeg_WithPngExtension_ReportsMismatch()
+    [Test]
+    public async Task Jpeg_WithPngExtension_ReportsMismatch()
     {
         var path = TempFile(".png", 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10);
         var finding = FormatMismatchAnalyzer.Analyze(path);
         Assert.NotNull(finding);
-        Assert.Equal("format-mismatch", finding.Id);
+        await Assert.That(finding.Id).IsEqualTo("format-mismatch");
     }
 
-    [Fact]
+    [Test]
     public void UnknownExtension_ReturnsNull()
     {
         var path = TempFile(".xyz", 0xFF, 0xD8, 0xFF, 0xE0);
@@ -60,7 +61,7 @@ public sealed class FormatMismatchAnalyzerTests : IDisposable
         Assert.Null(finding);
     }
 
-    [Fact]
+    [Test]
     public void UnknownContent_ReturnsNull()
     {
         var path = TempFile(".jpg", 0x00, 0x01, 0x02);

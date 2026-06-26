@@ -1,5 +1,5 @@
 using ArtifactView.Infrastructure.Analysis;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
@@ -15,33 +15,32 @@ public sealed class PerceptualHashTests
         return buf;
     }
 
-    [Fact]
-    public void Hamming_distance_of_identical_hashes_is_zero()
+    [Test]
+    public async Task Hamming_distance_of_identical_hashes_is_zero()
     {
         var h = PerceptualHash.FromGrayscale9x8(MakeRamp());
-        Assert.Equal(0, PerceptualHash.HammingDistance(h, h));
+        await Assert.That(PerceptualHash.HammingDistance(h, h)).IsEqualTo(0);
     }
 
-    [Fact]
-    public void Hamming_distance_is_symmetric()
+    [Test]
+    public async Task Hamming_distance_is_symmetric()
     {
         var a = PerceptualHash.FromGrayscale9x8(MakeRamp(0));
         var b = PerceptualHash.FromGrayscale9x8(MakeRamp(5));
-        Assert.Equal(PerceptualHash.HammingDistance(a, b),
-                     PerceptualHash.HammingDistance(b, a));
+        await Assert.That(PerceptualHash.HammingDistance(b, a)).IsEqualTo(PerceptualHash.HammingDistance(a, b));
     }
 
-    [Fact]
-    public void Uniform_image_produces_zero_hash()
+    [Test]
+    public async Task Uniform_image_produces_zero_hash()
     {
         // All pixels equal → no "left < right" comparisons → all bits 0.
         var uniform = new byte[72]; // all zeros
         var h = PerceptualHash.FromGrayscale9x8(uniform);
-        Assert.Equal(0UL, h.Value);
+        await Assert.That(h.Value).IsEqualTo(0UL);
     }
 
-    [Fact]
-    public void Strictly_decreasing_ramp_produces_all_ones_hash()
+    [Test]
+    public async Task Strictly_decreasing_ramp_produces_all_ones_hash()
     {
         // pixel[col] > pixel[col+1] for every column → bit = 0 for each pair
         // (dHash bit = 1 when left < right)
@@ -50,51 +49,51 @@ public sealed class PerceptualHashTests
             for (int col = 0; col < 9; col++)
                 buf[row * 9 + col] = (byte)(255 - col * 28);
         var h = PerceptualHash.FromGrayscale9x8(buf);
-        Assert.Equal(0UL, h.Value);
+        await Assert.That(h.Value).IsEqualTo(0UL);
     }
 
-    [Fact]
-    public void Strictly_increasing_ramp_produces_all_ones_hash()
+    [Test]
+    public async Task Strictly_increasing_ramp_produces_all_ones_hash()
     {
         var h = PerceptualHash.FromGrayscale9x8(MakeRamp());
         // Every col < col+1 → bit = 1 for every position → all 64 bits set.
-        Assert.Equal(ulong.MaxValue, h.Value);
+        await Assert.That(h.Value).IsEqualTo(ulong.MaxValue);
     }
 
-    [Fact]
+    [Test]
     public void FromGrayscale9x8_throws_for_short_buffer()
     {
         Assert.Throws<ArgumentException>(() =>
             PerceptualHash.FromGrayscale9x8(new byte[71]));
     }
 
-    [Fact]
-    public void Hamming_distance_between_complementary_hashes_is_64()
+    [Test]
+    public async Task Hamming_distance_between_complementary_hashes_is_64()
     {
         var a = new PerceptualHash(0UL);
         var b = new PerceptualHash(ulong.MaxValue);
-        Assert.Equal(64, PerceptualHash.HammingDistance(a, b));
+        await Assert.That(PerceptualHash.HammingDistance(a, b)).IsEqualTo(64);
     }
 
-    [Fact]
-    public void Near_duplicate_threshold_is_positive()
-        => Assert.True(PerceptualHash.NearDuplicateThreshold > 0);
+    [Test]
+    public async Task Near_duplicate_threshold_is_positive()
+        => await Assert.That(PerceptualHash.NearDuplicateThreshold > 0).IsTrue();
 }
 
 public sealed class NearDuplicateDetectorTests
 {
     private static PerceptualHash H(ulong v) => new(v);
 
-    [Fact]
-    public void Returns_empty_for_no_inputs()
-        => Assert.Empty(NearDuplicateDetector.Detect([]));
+    [Test]
+    public async Task Returns_empty_for_no_inputs()
+        => await Assert.That(NearDuplicateDetector.Detect([])).IsEmpty();
 
-    [Fact]
-    public void Returns_empty_for_single_file()
-        => Assert.Empty(NearDuplicateDetector.Detect([("/a.jpg", H(0xFF))]));
+    [Test]
+    public async Task Returns_empty_for_single_file()
+        => await Assert.That(NearDuplicateDetector.Detect([("/a.jpg", H(0xFF))])).IsEmpty();
 
-    [Fact]
-    public void Returns_empty_for_zero_hashes()
+    [Test]
+    public async Task Returns_empty_for_zero_hashes()
     {
         var inputs = new[]
         {
@@ -102,21 +101,21 @@ public sealed class NearDuplicateDetectorTests
             ("/b.jpg", H(0)),
         };
         // Value=0 means "not computed" — excluded.
-        Assert.Empty(NearDuplicateDetector.Detect(inputs));
+        await Assert.That(NearDuplicateDetector.Detect(inputs)).IsEmpty();
     }
 
-    [Fact]
-    public void Detects_identical_hash_pair()
+    [Test]
+    public async Task Detects_identical_hash_pair()
     {
         var h = H(0xABCDEF0123456789UL);
         var inputs = new[] { ("/a.jpg", h), ("/b.jpg", h) };
         var groups = NearDuplicateDetector.Detect(inputs);
-        var group  = Assert.Single(groups);
-        Assert.Equal(2, group.Members.Count);
+        var group  = await Assert.That(groups).HasSingleItem();
+        await Assert.That(group.Members.Count).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Respects_threshold_parameter()
+    [Test]
+    public async Task Respects_threshold_parameter()
     {
         // Hamming distance = 1 between these two hashes.
         var inputs = new[]
@@ -124,12 +123,12 @@ public sealed class NearDuplicateDetectorTests
             ("/a.jpg", H(0b0000_0001UL)),
             ("/b.jpg", H(0b0000_0011UL)),
         };
-        Assert.Empty(NearDuplicateDetector.Detect(inputs, threshold: 0));
-        Assert.Single(NearDuplicateDetector.Detect(inputs, threshold: 1));
+        await Assert.That(NearDuplicateDetector.Detect(inputs, threshold: 0)).IsEmpty();
+        await Assert.That(NearDuplicateDetector.Detect(inputs, threshold: 1)).HasSingleItem();
     }
 
-    [Fact]
-    public void Transitivity_groups_three_similar_images()
+    [Test]
+    public async Task Transitivity_groups_three_similar_images()
     {
         // a≈b and b≈c → {a,b,c} in same group.
         // d(a,b)=1, d(b,c)=1, d(a,c)=2
@@ -140,23 +139,23 @@ public sealed class NearDuplicateDetectorTests
             ("/c.jpg", H(0b0000_0111UL)),
         };
         var groups = NearDuplicateDetector.Detect(inputs, threshold: 2);
-        var group  = Assert.Single(groups);
-        Assert.Equal(3, group.Members.Count);
+        var group  = await Assert.That(groups).HasSingleItem();
+        await Assert.That(group.Members.Count).IsEqualTo(3);
     }
 
-    [Fact]
-    public void Different_images_not_grouped()
+    [Test]
+    public async Task Different_images_not_grouped()
     {
         var inputs = new[]
         {
             ("/a.jpg", H(0x0000_0000_0000_00FFUL)),
             ("/b.jpg", H(0xFFFF_FFFF_FFFF_FFFFUL)),  // Hamming distance = 56
         };
-        Assert.Empty(NearDuplicateDetector.Detect(inputs));
+        await Assert.That(NearDuplicateDetector.Detect(inputs)).IsEmpty();
     }
 
-    [Fact]
-    public void MaxHammingDistance_returns_correct_value()
+    [Test]
+    public async Task MaxHammingDistance_returns_correct_value()
     {
         // d(a,b)=1, d(b,c)=1, d(a,c)=2
         var inputs = new[]
@@ -166,7 +165,7 @@ public sealed class NearDuplicateDetectorTests
             ("/c.jpg", H(0b0111UL)),
         };
         var groups = NearDuplicateDetector.Detect(inputs, threshold: 2);
-        var group  = Assert.Single(groups);
-        Assert.Equal(2, group.MaxHammingDistance());
+        var group  = await Assert.That(groups).HasSingleItem();
+        await Assert.That(group.MaxHammingDistance()).IsEqualTo(2);
     }
 }

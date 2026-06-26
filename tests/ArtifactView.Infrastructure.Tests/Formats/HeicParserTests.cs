@@ -1,13 +1,12 @@
 using ArtifactView.Infrastructure.Analysis;
 using ArtifactView.Infrastructure.Formats.Heic;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Formats;
 
 public sealed class HeicParserTests
 {
     // ── Binary builder helpers ───────────────────────────────────────────────
-
     private static byte[] Be2(ushort v) => [(byte)(v >> 8), (byte)v];
     private static byte[] Be4(uint v)   => [(byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), (byte)v];
 
@@ -64,44 +63,44 @@ public sealed class HeicParserTests
 
     // ── Parser tests ─────────────────────────────────────────────────────────
 
-    [Fact]
-    public void Returns_invalid_for_empty_stream()
+    [Test]
+    public async Task Returns_invalid_for_empty_stream()
     {
         var result = HeicParser.Parse(new MemoryStream());
-        Assert.False(result.IsValid);
+        await Assert.That(result.IsValid).IsFalse();
     }
 
-    [Fact]
-    public void Returns_invalid_when_no_meta_box()
+    [Test]
+    public async Task Returns_invalid_when_no_meta_box()
     {
         // A stream with a ftyp box but no meta box.
         var ftyp = MakeBox("ftyp", [0x68, 0x65, 0x69, 0x63, 0, 0, 0, 0]);
         var result = HeicParser.Parse(StreamOf(ftyp));
-        Assert.False(result.IsValid);
+        await Assert.That(result.IsValid).IsFalse();
     }
 
-    [Fact]
-    public void Reads_primary_item_id_from_pitm()
+    [Test]
+    public async Task Reads_primary_item_id_from_pitm()
     {
         var meta   = MakeMeta(MakePitm(42));
         var result = HeicParser.Parse(StreamOf(meta));
 
-        Assert.True(result.IsValid);
-        Assert.Equal(42u, result.PrimaryItemId);
+        await Assert.That(result.IsValid).IsTrue();
+        await Assert.That(result.PrimaryItemId).IsEqualTo(42u);
     }
 
-    [Fact]
-    public void Returns_zero_primary_item_when_pitm_absent()
+    [Test]
+    public async Task Returns_zero_primary_item_when_pitm_absent()
     {
         var meta   = MakeMeta(MakeIinf());
         var result = HeicParser.Parse(StreamOf(meta));
 
-        Assert.True(result.IsValid);
-        Assert.Equal(0u, result.PrimaryItemId);
+        await Assert.That(result.IsValid).IsTrue();
+        await Assert.That(result.PrimaryItemId).IsEqualTo(0u);
     }
 
-    [Fact]
-    public void Enumerates_items_from_iinf()
+    [Test]
+    public async Task Enumerates_items_from_iinf()
     {
         var infe1 = MakeInfeV2(1, "hvc1");
         var infe2 = MakeInfeV2(2, "Exif");
@@ -109,26 +108,26 @@ public sealed class HeicParserTests
 
         var result = HeicParser.Parse(StreamOf(meta));
 
-        Assert.True(result.IsValid);
-        Assert.Equal(2, result.Items.Count);
-        Assert.Equal("hvc1", result.Items[0].ItemType);
-        Assert.Equal("Exif", result.Items[1].ItemType);
-        Assert.Equal(1u, result.Items[0].ItemId);
-        Assert.Equal(2u, result.Items[1].ItemId);
+        await Assert.That(result.IsValid).IsTrue();
+        await Assert.That(result.Items.Count).IsEqualTo(2);
+        await Assert.That(result.Items[0].ItemType).IsEqualTo("hvc1");
+        await Assert.That(result.Items[1].ItemType).IsEqualTo("Exif");
+        await Assert.That(result.Items[0].ItemId).IsEqualTo(1u);
+        await Assert.That(result.Items[1].ItemId).IsEqualTo(2u);
     }
 
-    [Fact]
-    public void Returns_empty_items_when_no_iinf()
+    [Test]
+    public async Task Returns_empty_items_when_no_iinf()
     {
         var meta   = MakeMeta(MakePitm(1));
         var result = HeicParser.Parse(StreamOf(meta));
 
-        Assert.True(result.IsValid);
-        Assert.Empty(result.Items);
+        await Assert.That(result.IsValid).IsTrue();
+        await Assert.That(result.Items).IsEmpty();
     }
 
-    [Fact]
-    public void Detects_auxiliary_ref()
+    [Test]
+    public async Task Detects_auxiliary_ref()
     {
         // Item 3 is auxiliary to item 1.
         var auxl = MakeRefChild("auxl", fromId: 3, toIds: 1);
@@ -139,15 +138,15 @@ public sealed class HeicParserTests
 
         var result = HeicParser.Parse(StreamOf(meta));
 
-        Assert.True(result.IsValid);
+        await Assert.That(result.IsValid).IsTrue();
         var auxRefs = result.AuxiliaryRefs.ToList();
-        Assert.Single(auxRefs);
-        Assert.Equal(3u, auxRefs[0].FromItemId);
-        Assert.Contains(1u, auxRefs[0].ToItemIds);
+        await Assert.That(auxRefs).HasSingleItem();
+        await Assert.That(auxRefs[0].FromItemId).IsEqualTo(3u);
+        await Assert.That(auxRefs[0].ToItemIds).Contains(1u);
     }
 
-    [Fact]
-    public void Detects_thumbnail_ref()
+    [Test]
+    public async Task Detects_thumbnail_ref()
     {
         var thmb = MakeRefChild("thmb", fromId: 2, toIds: 1);
         var meta = MakeMeta(
@@ -158,12 +157,12 @@ public sealed class HeicParserTests
         var result = HeicParser.Parse(StreamOf(meta));
 
         var thumbRefs = result.ThumbnailRefs.ToList();
-        Assert.Single(thumbRefs);
-        Assert.Equal(2u, thumbRefs[0].FromItemId);
+        await Assert.That(thumbRefs).HasSingleItem();
+        await Assert.That(thumbRefs[0].FromItemId).IsEqualTo(2u);
     }
 
-    [Fact]
-    public void Detects_multiple_auxiliary_refs()
+    [Test]
+    public async Task Detects_multiple_auxiliary_refs()
     {
         // Items 3 (depth) and 4 (gain map) are both auxiliary to item 1.
         var auxl1 = MakeRefChild("auxl", fromId: 3, toIds: 1);
@@ -178,29 +177,29 @@ public sealed class HeicParserTests
 
         var result = HeicParser.Parse(StreamOf(meta));
 
-        Assert.Equal(2, result.AuxiliaryRefs.Count());
+        await Assert.That(result.AuxiliaryRefs.Count()).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Returns_empty_refs_when_no_iref()
+    [Test]
+    public async Task Returns_empty_refs_when_no_iref()
     {
         var meta   = MakeMeta(MakePitm(1), MakeIinf(MakeInfeV2(1, "hvc1")));
         var result = HeicParser.Parse(StreamOf(meta));
 
-        Assert.True(result.IsValid);
-        Assert.Empty(result.References);
+        await Assert.That(result.IsValid).IsTrue();
+        await Assert.That(result.References).IsEmpty();
     }
 
-    [Fact]
-    public void Handles_ftyp_box_before_meta()
+    [Test]
+    public async Task Handles_ftyp_box_before_meta()
     {
         // Real HEIC files have: ftyp, meta, mdat
         var ftyp   = MakeBox("ftyp", [0x68, 0x65, 0x69, 0x63, 0, 0, 0, 0]);
         var meta   = MakeMeta(MakePitm(7), MakeIinf(MakeInfeV2(7, "hvc1")));
         var result = HeicParser.Parse(StreamOf([..ftyp, ..meta]));
 
-        Assert.True(result.IsValid);
-        Assert.Equal(7u, result.PrimaryItemId);
+        await Assert.That(result.IsValid).IsTrue();
+        await Assert.That(result.PrimaryItemId).IsEqualTo(7u);
     }
 }
 
@@ -236,15 +235,15 @@ public sealed class HeicStructureAnalyzerTests
     private static byte[] MakeMeta(params byte[][] children)
         => MakeFullBox("meta", 0, children.SelectMany(x => x).ToArray());
 
-    [Fact]
-    public void Returns_empty_for_non_heic_stream()
+    [Test]
+    public async Task Returns_empty_for_non_heic_stream()
     {
         var findings = HeicStructureAnalyzer.Analyze(new MemoryStream("not a heic file"u8.ToArray()));
-        Assert.Empty(findings);
+        await Assert.That(findings).IsEmpty();
     }
 
-    [Fact]
-    public void Reports_auxiliary_image_finding()
+    [Test]
+    public async Task Reports_auxiliary_image_finding()
     {
         var auxl = MakeRefChild("auxl", fromId: 2, toIds: 1);
         var meta = MakeMeta(
@@ -254,11 +253,11 @@ public sealed class HeicStructureAnalyzerTests
             MakeFullBox("iref", 0, auxl));
 
         var findings = HeicStructureAnalyzer.Analyze(new MemoryStream(meta));
-        Assert.Contains(findings, f => f.Id == "heic-auxiliary-images");
+        await Assert.That(findings).Contains(f => f.Id == "heic-auxiliary-images");
     }
 
-    [Fact]
-    public void Reports_thumbnail_finding()
+    [Test]
+    public async Task Reports_thumbnail_finding()
     {
         var thmb = MakeRefChild("thmb", fromId: 2, toIds: 1);
         var meta = MakeMeta(
@@ -268,11 +267,11 @@ public sealed class HeicStructureAnalyzerTests
             MakeFullBox("iref", 0, thmb));
 
         var findings = HeicStructureAnalyzer.Analyze(new MemoryStream(meta));
-        Assert.Contains(findings, f => f.Id == "heic-thumbnail-item");
+        await Assert.That(findings).Contains(f => f.Id == "heic-thumbnail-item");
     }
 
-    [Fact]
-    public void Reports_item_inventory_finding()
+    [Test]
+    public async Task Reports_item_inventory_finding()
     {
         var meta = MakeMeta(
             MakeFullBox("pitm", 0, Be2(1)),
@@ -280,20 +279,20 @@ public sealed class HeicStructureAnalyzerTests
                 [..Be2(2), ..MakeInfeV2(1, "hvc1"), ..MakeInfeV2(2, "Exif")]));
 
         var findings = HeicStructureAnalyzer.Analyze(new MemoryStream(meta));
-        Assert.Contains(findings, f => f.Id == "heic-item-inventory");
+        await Assert.That(findings).Contains(f => f.Id == "heic-item-inventory");
     }
 
-    [Fact]
-    public void No_findings_for_valid_meta_with_no_items_or_refs()
+    [Test]
+    public async Task No_findings_for_valid_meta_with_no_items_or_refs()
     {
         var meta     = MakeMeta(MakeFullBox("pitm", 0, Be2(1)));
         var findings = HeicStructureAnalyzer.Analyze(new MemoryStream(meta));
         // No items → no inventory; no iref → no aux/thumb findings.
-        Assert.Empty(findings);
+        await Assert.That(findings).IsEmpty();
     }
 
-    [Fact]
-    public void Auxiliary_finding_text_pluralises_correctly()
+    [Test]
+    public async Task Auxiliary_finding_text_pluralises_correctly()
     {
         var auxl1 = MakeRefChild("auxl", fromId: 2, toIds: 1);
         var auxl2 = MakeRefChild("auxl", fromId: 3, toIds: 1);
@@ -308,6 +307,6 @@ public sealed class HeicStructureAnalyzerTests
 
         var findings = HeicStructureAnalyzer.Analyze(new MemoryStream(meta));
         var aux = findings.First(f => f.Id == "heic-auxiliary-images");
-        Assert.Contains("2 auxiliary", aux.Observation);
+        await Assert.That(aux.Observation).Contains("2 auxiliary");
     }
 }

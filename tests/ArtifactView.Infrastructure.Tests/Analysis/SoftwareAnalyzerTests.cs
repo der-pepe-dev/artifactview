@@ -1,54 +1,54 @@
-using Xunit;
 using ArtifactView.Core.Models;
 using ArtifactView.Infrastructure.Analysis;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
 public sealed class SoftwareAnalyzerTests
 {
-    [Theory]
-    [InlineData("Adobe Photoshop CC 2024")]
-    [InlineData("Adobe Lightroom Classic 13.0")]
-    [InlineData("GIMP 2.10.36")]
-    [InlineData("Snapseed")]
-    [InlineData("Instagram")]
-    [InlineData("PicsArt")]
-    [InlineData("WhatsApp")]
-    public void KnownEditingTool_ReturnsEditingFinding(string software)
+    [Test]
+    [Arguments("Adobe Photoshop CC 2024")]
+    [Arguments("Adobe Lightroom Classic 13.0")]
+    [Arguments("GIMP 2.10.36")]
+    [Arguments("Snapseed")]
+    [Arguments("Instagram")]
+    [Arguments("PicsArt")]
+    [Arguments("WhatsApp")]
+    public async Task KnownEditingTool_ReturnsEditingFinding(string software)
     {
         var findings = SoftwareAnalyzer.Analyze(software);
-        Assert.Single(findings);
-        Assert.Equal("software-editing-tool", findings[0].Id);
-        Assert.Equal(ReviewPriority.Medium, findings[0].ReviewPriority);
-        Assert.Contains(software, findings[0].Observation);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("software-editing-tool");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.Medium);
+        await Assert.That(findings[0].Observation).Contains(software);
     }
 
-    [Theory]
-    [InlineData("Nikon COOLPIX P950")]
-    [InlineData("16.7.2")]
-    [InlineData("Samsung Galaxy S24")]
-    public void UnknownSoftware_ReturnsPresentFinding(string software)
+    [Test]
+    [Arguments("Nikon COOLPIX P950")]
+    [Arguments("16.7.2")]
+    [Arguments("Samsung Galaxy S24")]
+    public async Task UnknownSoftware_ReturnsPresentFinding(string software)
     {
         var findings = SoftwareAnalyzer.Analyze(software);
-        Assert.Single(findings);
-        Assert.Equal("software-field-present", findings[0].Id);
-        Assert.Equal(ReviewPriority.None, findings[0].ReviewPriority);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("software-field-present");
+        await Assert.That(findings[0].ReviewPriority).IsEqualTo(ReviewPriority.None);
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void NullOrWhitespace_ReturnsEmpty(string? software)
+    [Test]
+    [Arguments(null)]
+    [Arguments("")]
+    [Arguments("   ")]
+    public async Task NullOrWhitespace_ReturnsEmpty(string? software)
     {
-        Assert.Empty(SoftwareAnalyzer.Analyze(software));
+        await Assert.That(SoftwareAnalyzer.Analyze(software)).IsEmpty();
     }
 
-    [Fact]
-    public void CaseInsensitiveMatch()
+    [Test]
+    public async Task CaseInsensitiveMatch()
     {
         var findings = SoftwareAnalyzer.Analyze("ADOBE PHOTOSHOP CS6");
-        Assert.Single(findings);
-        Assert.Equal("software-editing-tool", findings[0].Id);
+        await Assert.That(findings).HasSingleItem();
+        await Assert.That(findings[0].Id).IsEqualTo("software-editing-tool");
     }
 }

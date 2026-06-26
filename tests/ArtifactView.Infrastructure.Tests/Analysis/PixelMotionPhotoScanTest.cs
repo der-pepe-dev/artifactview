@@ -1,10 +1,9 @@
+using System.IO;
 using ArtifactView.Infrastructure.Analysis;
-using Xunit;
-using Xunit.Abstractions;
 
 namespace ArtifactView.Infrastructure.Tests.Analysis;
 
-public sealed class PixelMotionPhotoScanTest(ITestOutputHelper output)
+public sealed class PixelMotionPhotoScanTest
 {
     private static readonly string TestFile =
         Path.Combine(
@@ -12,39 +11,37 @@ public sealed class PixelMotionPhotoScanTest(ITestOutputHelper output)
             "..", "..", "..", "..", "..", "tests",
             "PXL_20250805_095133155.RAW-01.COVER.jpg");
 
-    [SkippableFact]
-    public void Scan_does_not_throw_on_pixel_motion_photo()
+    [Test]
+    public async Task Scan_does_not_throw_on_pixel_motion_photo()
     {
-        Skip.If(!File.Exists(TestFile), "Test file not present");
+        Skip.When(!File.Exists(TestFile), "Test file not present");
 
-        var ex = Record.Exception(() => JpegEmbeddedArtifactScanner.Scan(TestFile));
-        Assert.Null(ex);
+        await Assert.That(() => JpegEmbeddedArtifactScanner.Scan(TestFile)).ThrowsNothing();
     }
 
-    [SkippableFact]
-    public void Scan_reports_artifacts_for_pixel_motion_photo()
+    [Test]
+    public async Task Scan_reports_artifacts_for_pixel_motion_photo()
     {
-        Skip.If(!File.Exists(TestFile), "Test file not present");
+        Skip.When(!File.Exists(TestFile), "Test file not present");
 
         var artifacts = JpegEmbeddedArtifactScanner.Scan(TestFile);
-        output.WriteLine($"Found {artifacts.Count} artifact(s):");
+        Console.WriteLine($"Found {artifacts.Count} artifact(s):");
         foreach (var a in artifacts)
-            output.WriteLine($"  [{a.Type}] {a.DisplayName} mime={a.MimeType} extractable={a.IsExtractable} offset={a.Offset} len={a.Length}");
+            Console.WriteLine($"  [{a.Type}] {a.DisplayName} mime={a.MimeType} extractable={a.IsExtractable} offset={a.Offset} len={a.Length}");
 
-        Assert.NotEmpty(artifacts);
+        await Assert.That(artifacts).IsNotEmpty();
     }
 
-    [SkippableFact]
-    public void ExtractPayload_does_not_throw_for_each_extractable_artifact()
+    [Test]
+    public async Task ExtractPayload_does_not_throw_for_each_extractable_artifact()
     {
-        Skip.If(!File.Exists(TestFile), "Test file not present");
+        Skip.When(!File.Exists(TestFile), "Test file not present");
 
         var artifacts = JpegEmbeddedArtifactScanner.Scan(TestFile);
         foreach (var a in artifacts.Where(x => x.IsExtractable))
         {
-            output.WriteLine($"Extracting [{a.Type}] {a.DisplayName} len={a.Length}");
-            var ex = Record.Exception(() => JpegEmbeddedArtifactScanner.ExtractPayload(TestFile, a));
-            Assert.Null(ex);
+            Console.WriteLine($"Extracting [{a.Type}] {a.DisplayName} len={a.Length}");
+            await Assert.That(() => JpegEmbeddedArtifactScanner.ExtractPayload(TestFile, a)).ThrowsNothing();
         }
     }
 }

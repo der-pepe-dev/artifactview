@@ -23,3 +23,9 @@ artifact source is deferred. See [[roadmap]] for phase detail.
 
 <!-- Append dated notes here, newest first: -->
 <!-- - YYYY-MM-DD: ... -->
+- 2026-06-26: Test suite migrated from xUnit to **TUnit** (Microsoft.Testing.Platform).
+  All 3 projects: Core 13, Application 26, Infrastructure 381 + 8 skipped — 0 failed.
+  `dotnet test` runs in MTP mode via root `global.json`; needs `--solution`/`--project`.
+  GDI+ skips now use `[RequiresGdiPlus]`; runtime-path fixture skips use inline `Skip.When`.
+  WSL gotcha: running the Infrastructure suite over `/mnt/w` (drvfs) wedges the mount —
+  run tests from an ext4 copy. See [[tasks/done/convert-tests-to-tunit]].

@@ -1,6 +1,6 @@
 using ArtifactView.Core.Models;
 using ArtifactView.Core.Services;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace ArtifactView.Core.Tests;
 
@@ -8,17 +8,17 @@ public sealed class EvidenceReconciliationServiceTests
 {
     private readonly EvidenceReconciliationService _sut = new();
 
-    [Fact]
-    public void Returns_ambiguous_when_no_candidates()
+    [Test]
+    public async Task Returns_ambiguous_when_no_candidates()
     {
         var result = _sut.Reconcile("CameraModel", []);
 
-        Assert.Equal(MergeStatus.Ambiguous, result.Status);
+        await Assert.That(result.Status).IsEqualTo(MergeStatus.Ambiguous);
         Assert.Null(result.PreferredValue);
     }
 
-    [Fact]
-    public void Returns_resolved_for_single_candidate()
+    [Test]
+    public async Task Returns_resolved_for_single_candidate()
     {
         var candidates = new[]
         {
@@ -33,12 +33,12 @@ public sealed class EvidenceReconciliationServiceTests
 
         var result = _sut.Reconcile("CameraModel", candidates);
 
-        Assert.Equal(MergeStatus.Resolved, result.Status);
-        Assert.Equal("Canon EOS R5", result.PreferredValue);
+        await Assert.That(result.Status).IsEqualTo(MergeStatus.Resolved);
+        await Assert.That(result.PreferredValue).IsEqualTo("Canon EOS R5");
     }
 
-    [Fact]
-    public void Returns_merged_when_multiple_candidates_agree_on_value()
+    [Test]
+    public async Task Returns_merged_when_multiple_candidates_agree_on_value()
     {
         var candidates = new[]
         {
@@ -60,13 +60,13 @@ public sealed class EvidenceReconciliationServiceTests
 
         var result = _sut.Reconcile("CameraModel", candidates);
 
-        Assert.Equal(MergeStatus.Merged, result.Status);
-        Assert.Equal("Canon EOS R5", result.PreferredValue);
-        Assert.Equal(2, result.Candidates.Count);
+        await Assert.That(result.Status).IsEqualTo(MergeStatus.Merged);
+        await Assert.That(result.PreferredValue).IsEqualTo("Canon EOS R5");
+        await Assert.That(result.Candidates.Count).IsEqualTo(2);
     }
 
-    [Fact]
-    public void Returns_conflicted_when_candidates_have_different_values()
+    [Test]
+    public async Task Returns_conflicted_when_candidates_have_different_values()
     {
         var candidates = new[]
         {
@@ -88,13 +88,13 @@ public sealed class EvidenceReconciliationServiceTests
 
         var result = _sut.Reconcile("CameraModel", candidates);
 
-        Assert.Equal(MergeStatus.Conflicted, result.Status);
+        await Assert.That(result.Status).IsEqualTo(MergeStatus.Conflicted);
         // Highest-confidence candidate is still preferred even under conflict.
-        Assert.Equal("Canon EOS R5", result.PreferredValue);
+        await Assert.That(result.PreferredValue).IsEqualTo("Canon EOS R5");
     }
 
-    [Fact]
-    public void Preserves_all_candidates_in_result()
+    [Test]
+    public async Task Preserves_all_candidates_in_result()
     {
         var candidates = new[]
         {
@@ -105,11 +105,11 @@ public sealed class EvidenceReconciliationServiceTests
         var result = _sut.Reconcile("GPS", candidates);
 
         // Raw evidence from all sources must be accessible.
-        Assert.Equal(2, result.Candidates.Count);
+        await Assert.That(result.Candidates.Count).IsEqualTo(2);
     }
 
-    [Fact]
-    public void SourceUsed_set_to_preferred_candidate_source_type()
+    [Test]
+    public async Task SourceUsed_set_to_preferred_candidate_source_type()
     {
         var candidates = new[]
         {
@@ -131,10 +131,10 @@ public sealed class EvidenceReconciliationServiceTests
 
         var result = _sut.Reconcile("Software", candidates);
 
-        Assert.Equal("ExifMetadata", result.SourceUsed);
+        await Assert.That(result.SourceUsed).IsEqualTo("ExifMetadata");
     }
 
-    [Fact]
+    [Test]
     public void SourceUsed_null_when_no_candidates()
     {
         var result = _sut.Reconcile("Software", []);
