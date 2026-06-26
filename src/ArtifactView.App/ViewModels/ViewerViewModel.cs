@@ -100,11 +100,19 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
             return;
         }
 
-        // Deleted NTFS file: best-effort recovery of its bytes from the $MFT record.
-        if (row is not null && row.PresenceState == "Deleted" && row.DeletedMftRecordNumber >= 0)
+        // Deleted file: best-effort recovery (NTFS via $MFT record, FAT via start cluster).
+        if (row is not null && row.PresenceState == "Deleted")
         {
-            _ = Task.Run(() => LoadDeletedFileAsync(row, token), token);
-            return;
+            if (row.DeletedMftRecordNumber >= 0)
+            {
+                _ = Task.Run(() => LoadDeletedFileAsync(row, token), token);
+                return;
+            }
+            if (row.DeletedFatStartCluster >= 0)
+            {
+                _ = Task.Run(() => LoadDeletedFatFileAsync(row, token), token);
+                return;
+            }
         }
 
         // Live file inside a disk image: read its content out of the image via DiscUtils.
@@ -307,9 +315,7 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
         }
     }
 
-    // Best-effort recovery of a DELETED NTFS file's bytes from its $MFT record. The
-    // recovered clusters may have been reallocated since deletion, so a decode failure is
-    // expected and reported plainly rather than as a hard error.
+    // Best-effort recovery of a DELETED NTFS file's bytes from its $MFT record.
     private void LoadDeletedFileAsync(MediaEntityRow row, CancellationToken token)
     {
         byte[]? payload = null;
@@ -322,7 +328,29 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
         {
             _logger.LogWarning(ex, "Failed to recover deleted file: {Name}", row.DisplayName);
         }
+        DecodeRecoveredBytes(row, payload, token);
+    }
 
+    // Best-effort recovery of a DELETED FAT file from its start cluster (contiguous).
+    private void LoadDeletedFatFileAsync(MediaEntityRow row, CancellationToken token)
+    {
+        byte[]? payload = null;
+        try
+        {
+            payload = DiskImagePartitionReader.ReadDeletedFatFileBytes(
+                row.DiskImagePath, row.DiskImagePartitionIndex, row.DeletedFatStartCluster, row.FileSizeBytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to recover deleted FAT file: {Name}", row.DisplayName);
+        }
+        DecodeRecoveredBytes(row, payload, token);
+    }
+
+    // Decodes best-effort recovered bytes (deleted-file undelete). The clusters may have
+    // been reallocated since deletion, so a decode failure is expected and reported plainly.
+    private void DecodeRecoveredBytes(MediaEntityRow row, byte[]? payload, CancellationToken token)
+    {
         if (token.IsCancellationRequested) return;
 
         if (payload is null || payload.Length == 0)
@@ -330,7 +358,7 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
             System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
                 Source    = null;
-                LoadError = "Deleted file — recovered bytes unavailable (compressed or not recoverable).";
+                LoadError = "Deleted file — recovered bytes unavailable (not recoverable).";
             });
             return;
         }

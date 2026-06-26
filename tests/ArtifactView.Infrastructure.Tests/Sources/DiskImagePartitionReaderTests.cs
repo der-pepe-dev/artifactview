@@ -212,4 +212,42 @@ public sealed class DiskImagePartitionReaderTests : IDisposable
 
         await Assert.That(bytes).IsNull();
     }
+
+    // ── deleted FAT recovery ───────────────────────────────────────────────────
+
+    [Test]
+    public async Task Enumerates_and_recovers_deleted_fat_file()
+    {
+        var content = new byte[2000];
+        for (int i = 0; i < content.Length; i++) content[i] = (byte)((i * 7 + 3) & 0xFF);
+
+        var path = CreateFatImage(fat =>
+        {
+            using (var s = fat.OpenFile("photo.jpg", FileMode.Create, FileAccess.Write))
+                s.Write(content);
+            fat.DeleteFile("photo.jpg"); // marks the dir entry 0xE5; data clusters remain
+        });
+
+        var deleted = DiskImagePartitionReader.ReadAllMediaFiles(path)
+            .Single(e => e.IsDeleted && e.Filesystem == "FAT");
+
+        await Assert.That(deleted.FatStartCluster).IsGreaterThanOrEqualTo(2L);
+        await Assert.That(deleted.SizeBytes).IsEqualTo((long)content.Length);
+
+        var bytes = DiskImagePartitionReader.ReadDeletedFatFileBytes(
+            path, deleted.PartitionIndex, deleted.FatStartCluster, deleted.SizeBytes);
+
+        await Assert.That(bytes).IsNotNull();
+        await Assert.That(bytes!).IsEquivalentTo(content);
+    }
+
+    [Test]
+    public async Task ReadDeletedFatFileBytes_returns_null_for_bad_cluster()
+    {
+        var path = CreateFatImage(fat => Write(fat, "photo.jpg", [0xFF, 0xD8]));
+
+        var bytes = DiskImagePartitionReader.ReadDeletedFatFileBytes(path, 0, 0, 100);
+
+        await Assert.That(bytes).IsNull();
+    }
 }

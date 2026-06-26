@@ -24,6 +24,11 @@ artifact source is deferred. See [[roadmap]] for phase detail.
 
 <!-- Append dated notes here, newest first: -->
 <!-- - YYYY-MM-DD: ... -->
+- 2026-06-27: Deleted FAT12/16/32 files now viewable (best-effort). `FatDeletedFileScanner`
+  raw-parses directories for 0xE5 entries (DiscUtils only lists live) + contiguous recovery
+  (FAT clears the chain on delete); `DiskImagePartitionReader.ReadDeletedFatFileBytes`; viewer
+  branch by filesystem. exFAT deleted still pending (no DiscUtils support → custom parser).
+  Fully unit-tested (DiscUtils formats/deletes FAT on Linux). See [[tasks/done/view-deleted-fat]].
 - 2026-06-27: Deleted NTFS files now viewable (best-effort undelete). `NtfsDeletedFileRecovery`
   parses the deleted MFT record's `$DATA` (resident + non-resident data runs, fixups) and
   `DiskImagePartitionReader.ReadDeletedFileBytes` reads the clusters raw; viewer decodes them
