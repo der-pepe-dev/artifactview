@@ -18,3 +18,6 @@ Durable, prioritized task list. Active work goes in `tasks/<task-name>.md`, not 
   loads carved/disk-image bytes.
 
 ## Low priority / someday
+
+- Migrate the app from WPF to **Avalonia** — cross-platform UI; would also make the App and
+  viewer testable on Linux/WSL, removing the current headless-WPF verification gap (GDI+/WIC).

@@ -354,9 +354,15 @@
                                         </Grid.RowDefinitions>
                                         <!-- Thumbnail image or placeholder -->
                                         <Border Grid.Row="0" Background="#222">
-                                            <Image Source="{Binding Converter={StaticResource FilmstripImageConverter}}"
-                                                   Stretch="Uniform"
-                                                   RenderOptions.BitmapScalingMode="LowQuality" />
+                                            <Image Stretch="Uniform"
+                                                   RenderOptions.BitmapScalingMode="LowQuality">
+                                                <Image.Source>
+                                                    <MultiBinding Converter="{StaticResource FilmstripImageConverter}">
+                                                        <Binding />
+                                                        <Binding Path="FilmstripThumbnail" />
+                                                    </MultiBinding>
+                                                </Image.Source>
+                                            </Image>
                                         </Border>
                                         <!-- Filename label -->
                                         <TextBlock Grid.Row="1"
