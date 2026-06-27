@@ -263,6 +263,44 @@ public static class DiskImagePartitionReader
         catch { return null; }
     }
 
+    // Best-effort recovery of a DELETED exFAT file's bytes from its recorded first cluster
+    // (contiguous, since the FAT chain is gone after delete). Returns null on failure.
+    public static byte[]? ReadDeletedExFatFileBytes(
+        string imagePath, int partitionIndex, long firstCluster, long size, long maxBytes = 512L * 1024 * 1024)
+    {
+        if (firstCluster < 2 || size <= 0 || size > maxBytes) return null;
+        try
+        {
+            using var fsMeta = new System.IO.FileStream(
+                imagePath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
+            using var disk = new Disk(fsMeta, Ownership.None);
+            var partitions = TryGetPartitions(disk);
+
+            System.IO.Stream volStream;
+            System.IO.Stream? owned = null;
+            if (partitions.Count == 0)
+            {
+                fsMeta.Seek(0, System.IO.SeekOrigin.Begin);
+                volStream = fsMeta;
+            }
+            else
+            {
+                if (partitionIndex < 0 || partitionIndex >= partitions.Count) return null;
+                owned = partitions[partitionIndex].Open();
+                volStream = owned;
+            }
+
+            try
+            {
+                var g = ExFatScanner.ReadGeometry(volStream);
+                if (g is null) return null;
+                return ExFatScanner.RecoverContiguous(volStream, g, firstCluster, size, maxBytes);
+            }
+            finally { owned?.Dispose(); }
+        }
+        catch { return null; }
+    }
+
     private static IReadOnlyList<PartitionInfo> TryGetPartitions(Disk disk)
     {
         // Try MBR first, then GPT.
@@ -290,8 +328,28 @@ public static class DiskImagePartitionReader
     {
         // Try NTFS.
         if (TryReadNtfs(partStream, partIndex, results)) return;
+        // Try exFAT (DiscUtils can't mount it; custom deleted-file scan).
+        if (TryReadExFat(partStream, partIndex, results)) return;
         // Try FAT.
         TryReadFat(partStream, partIndex, results);
+    }
+
+    private static bool TryReadExFat(System.IO.Stream partStream, int partIndex, List<DiskImageFileEntry> results)
+    {
+        try
+        {
+            var geometry = ExFatScanner.ReadGeometry(partStream);
+            if (geometry is null) return false; // not exFAT
+
+            foreach (var d in ExFatScanner.Scan(partStream, geometry, s_mediaExtensions))
+            {
+                results.Add(new DiskImageFileEntry(
+                    @"\[DELETED]\" + d.Name, d.Size, null, null, "exFAT", partIndex,
+                    IsDeleted: true, FatStartCluster: d.FirstCluster));
+            }
+            return true;
+        }
+        catch { return false; }
     }
 
     private static bool TryReadNtfs(System.IO.Stream partStream, int partIndex, List<DiskImageFileEntry> results)
