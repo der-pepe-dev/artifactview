@@ -103,6 +103,10 @@ public sealed class MediaEntityRow : INotifyPropertyChanged
     // -1 when not a recoverable deleted entry.
     public long DeletedMftRecordNumber { get; init; } = -1;
 
+    // For DELETED FAT files: the recorded start cluster (contiguous best-effort recovery).
+    // -1 when not applicable. FileSizeBytes carries the recorded size.
+    public long DeletedFatStartCluster { get; init; } = -1;
+
     public string PresenceState
     {
         get => _presenceState;

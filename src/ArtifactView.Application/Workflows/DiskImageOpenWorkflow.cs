@@ -43,6 +43,7 @@ public sealed class DiskImageOpenWorkflow(ILogger<DiskImageOpenWorkflow> logger)
                 DiskImageInternalPath   = isGhost ? string.Empty : entry.LogicalPath,
                 DiskImageFilesystem     = entry.Filesystem,
                 DeletedMftRecordNumber  = entry.MftRecordNumber,
+                DeletedFatStartCluster  = entry.FatStartCluster,
                 ResolutionText    = string.Empty,
                 PreferredDateText = dateText,
                 CameraModel       = string.Empty,

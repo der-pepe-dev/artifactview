@@ -27,7 +27,10 @@ public static class DiskImagePartitionReader
         bool IsDeleted,
         // For deleted NTFS files: the $MFT record number, used to recover bytes via
         // ReadDeletedFileBytes. -1 for live files and non-recoverable entries.
-        long MftRecordNumber = -1
+        long MftRecordNumber = -1,
+        // For deleted FAT files: the recorded start cluster, used to recover bytes
+        // (contiguous) via ReadDeletedFatFileBytes. -1 when not applicable.
+        long FatStartCluster = -1
     );
 
     // Opens a raw .dd/.img disk image and enumerates all media files across all partitions.
@@ -221,6 +224,45 @@ public static class DiskImagePartitionReader
         return bytesPerSector * sectorsPerCluster;
     }
 
+    // Best-effort recovery of a DELETED FAT file's bytes from its recorded start cluster.
+    // FAT clears the cluster chain on delete, so this assumes contiguous storage and reads
+    // `size` bytes forward. Returns null on failure or if the read is short.
+    public static byte[]? ReadDeletedFatFileBytes(
+        string imagePath, int partitionIndex, long startCluster, long size, long maxBytes = 512L * 1024 * 1024)
+    {
+        if (startCluster < 2 || size <= 0 || size > maxBytes) return null;
+        try
+        {
+            using var fsMeta = new System.IO.FileStream(
+                imagePath, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
+            using var disk = new Disk(fsMeta, Ownership.None);
+            var partitions = TryGetPartitions(disk);
+
+            System.IO.Stream volStream;
+            System.IO.Stream? owned = null;
+            if (partitions.Count == 0)
+            {
+                fsMeta.Seek(0, System.IO.SeekOrigin.Begin);
+                volStream = fsMeta;
+            }
+            else
+            {
+                if (partitionIndex < 0 || partitionIndex >= partitions.Count) return null;
+                owned = partitions[partitionIndex].Open();
+                volStream = owned;
+            }
+
+            try
+            {
+                var g = FatDeletedFileScanner.ReadGeometry(volStream);
+                if (g is null) return null;
+                return FatDeletedFileScanner.RecoverContiguous(volStream, g, startCluster, size, maxBytes);
+            }
+            finally { owned?.Dispose(); }
+        }
+        catch { return null; }
+    }
+
     private static IReadOnlyList<PartitionInfo> TryGetPartitions(Disk disk)
     {
         // Try MBR first, then GPT.
@@ -411,11 +453,31 @@ public static class DiskImagePartitionReader
             if (!FatFileSystem.Detect(partStream)) return false;
             partStream.Seek(0, System.IO.SeekOrigin.Begin);
 
-            using var fat = new FatFileSystem(partStream);
-            EnumerateFatFiles(fat, @"\", partIndex, results);
+            using (var fat = new FatFileSystem(partStream))
+                EnumerateFatFiles(fat, @"\", partIndex, results);
+
+            // Deleted files: DiscUtils only enumerates live entries, so scan raw.
+            ScanFatDeletedFiles(partStream, partIndex, results);
             return true;
         }
         catch { return false; }
+    }
+
+    private static void ScanFatDeletedFiles(System.IO.Stream partStream, int partIndex, List<DiskImageFileEntry> results)
+    {
+        try
+        {
+            var geometry = FatDeletedFileScanner.ReadGeometry(partStream);
+            if (geometry is null) return;
+
+            foreach (var d in FatDeletedFileScanner.Scan(partStream, geometry, s_mediaExtensions))
+            {
+                results.Add(new DiskImageFileEntry(
+                    @"\[DELETED]\" + d.Name, d.Size, null, null, "FAT", partIndex,
+                    IsDeleted: true, FatStartCluster: d.StartCluster));
+            }
+        }
+        catch { }
     }
 
     private static void EnumerateFatFiles(FatFileSystem fat, string dir, int partIndex, List<DiskImageFileEntry> results)
