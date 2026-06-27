@@ -337,12 +337,15 @@ public sealed class ViewerViewModel : INotifyPropertyChanged
         byte[]? payload = null;
         try
         {
-            payload = DiskImagePartitionReader.ReadDeletedFatFileBytes(
-                row.DiskImagePath, row.DiskImagePartitionIndex, row.DeletedFatStartCluster, row.FileSizeBytes);
+            payload = row.DiskImageFilesystem == "exFAT"
+                ? DiskImagePartitionReader.ReadDeletedExFatFileBytes(
+                    row.DiskImagePath, row.DiskImagePartitionIndex, row.DeletedFatStartCluster, row.FileSizeBytes)
+                : DiskImagePartitionReader.ReadDeletedFatFileBytes(
+                    row.DiskImagePath, row.DiskImagePartitionIndex, row.DeletedFatStartCluster, row.FileSizeBytes);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to recover deleted FAT file: {Name}", row.DisplayName);
+            _logger.LogWarning(ex, "Failed to recover deleted FAT/exFAT file: {Name}", row.DisplayName);
         }
         DecodeRecoveredBytes(row, payload, token);
     }

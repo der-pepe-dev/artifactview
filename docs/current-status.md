@@ -24,6 +24,11 @@ artifact source is deferred. See [[roadmap]] for phase detail.
 
 <!-- Append dated notes here, newest first: -->
 <!-- - YYYY-MM-DD: ... -->
+- 2026-06-27: Deleted exFAT files now viewable (best-effort) via a from-scratch `ExFatScanner`
+  (DiscUtils has no exFAT support) — parses entry-sets (File/Stream/Name, InUse bit for
+  deleted) + contiguous recovery; `DiskImagePartitionReader.{TryReadExFat,ReadDeletedExFatFileBytes}`;
+  viewer dispatches FAT vs exFAT by filesystem. Deleted-file recovery now covers NTFS + FAT +
+  exFAT. Tested with a hand-built exFAT image. See [[tasks/done/view-deleted-exfat]].
 - 2026-06-27: Deleted FAT12/16/32 files now viewable (best-effort). `FatDeletedFileScanner`
   raw-parses directories for 0xE5 entries (DiscUtils only lists live) + contiguous recovery
   (FAT clears the chain on delete); `DiskImagePartitionReader.ReadDeletedFatFileBytes`; viewer
