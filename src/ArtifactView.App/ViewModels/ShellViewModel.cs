@@ -4,7 +4,9 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using ArtifactView.App.Commands;
+using ArtifactView.App.Viewing;
 using ArtifactView.Application.Jobs;
 using ArtifactView.Application.Plugins;
 using ArtifactView.Application.Settings;
@@ -446,6 +448,22 @@ public sealed class ShellViewModel : INotifyPropertyChanged, IDisposable
                     StatusText = deleted > 0
                         ? $"{count} file(s) found — {deleted} deleted"
                         : $"{count} file(s) found in disk image");
+
+                // Background: decode filmstrip thumbnails for recovered rows (carved / live /
+                // deleted) whose bytes aren't on a host path. Sequential — each read mounts the
+                // image, so concurrency would thrash it.
+                var byteRows = System.Windows.Application.Current.Dispatcher.Invoke(
+                    () => Items.Where(r => !r.IsDirectory && RecoveredImageBytes.HasByteSource(r)).ToList());
+                foreach (var r in byteRows)
+                {
+                    if (token.IsCancellationRequested) break;
+                    var thumb = DecodeFilmstripThumbnail(r);
+                    if (thumb is not null)
+                    {
+                        var captured = r;
+                        System.Windows.Application.Current.Dispatcher.Invoke(() => captured.FilmstripThumbnail = thumb);
+                    }
+                }
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -455,6 +473,29 @@ public sealed class ShellViewModel : INotifyPropertyChanged, IDisposable
                     StatusText = "Disk image load failed");
             }
         }, token);
+    }
+
+    // Decodes a downsampled (60px) filmstrip thumbnail from a recovered row's bytes, off the
+    // UI thread. Returns a frozen BitmapSource, or null if the bytes are absent/undecodable.
+    private static BitmapSource? DecodeFilmstripThumbnail(MediaEntityRow row)
+    {
+        try
+        {
+            var bytes = RecoveredImageBytes.TryGet(row);
+            if (bytes is null || bytes.Length == 0) return null;
+
+            using var ms = new MemoryStream(bytes);
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource      = ms;
+            bmp.DecodePixelHeight = 60;
+            bmp.CacheOption       = BitmapCacheOption.OnLoad;
+            bmp.CreateOptions     = BitmapCreateOptions.IgnoreColorProfile;
+            bmp.EndInit();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch { return null; }
     }
 
     private void Refresh()

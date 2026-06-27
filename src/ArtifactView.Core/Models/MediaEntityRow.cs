@@ -107,6 +107,15 @@ public sealed class MediaEntityRow : INotifyPropertyChanged
     // -1 when not applicable. FileSizeBytes carries the recorded size.
     public long DeletedFatStartCluster { get; init; } = -1;
 
+    // Background-computed filmstrip thumbnail. Typed as object to keep Core WPF-free; the UI
+    // stores a frozen BitmapSource and binds the filmstrip Image.Source to it.
+    private object? _filmstripThumbnail;
+    public object? FilmstripThumbnail
+    {
+        get => _filmstripThumbnail;
+        set { _filmstripThumbnail = value; OnPropertyChanged(); }
+    }
+
     public string PresenceState
     {
         get => _presenceState;

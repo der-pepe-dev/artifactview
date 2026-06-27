@@ -6,12 +6,18 @@ using ArtifactView.Core.Models;
 
 namespace ArtifactView.App.Converters;
 
-[ValueConversion(typeof(MediaEntityRow), typeof(BitmapImage))]
-public sealed class FilmstripImageConverter : IValueConverter
+// Produces the filmstrip cell image. MultiBinding inputs: [0] the MediaEntityRow,
+// [1] its background-computed FilmstripThumbnail. Byte-source rows (carved / disk-image /
+// deleted) have no host path, so they show the precomputed thumbnail once it arrives; file
+// rows decode lazily from LogicalPath.
+public sealed class FilmstripImageConverter : IMultiValueConverter
 {
-    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    public object? Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is not MediaEntityRow row) return null;
+        if (values.Length > 1 && values[1] is BitmapSource precomputed)
+            return precomputed;
+
+        if (values.Length == 0 || values[0] is not MediaEntityRow row) return null;
         var path = row.LogicalPath;
         if (string.IsNullOrEmpty(path) || !File.Exists(path)) return null;
 
@@ -30,6 +36,6 @@ public sealed class FilmstripImageConverter : IValueConverter
         catch { return null; }
     }
 
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }

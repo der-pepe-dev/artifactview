@@ -24,6 +24,12 @@ artifact source is deferred. See [[roadmap]] for phase detail.
 
 <!-- Append dated notes here, newest first: -->
 <!-- - YYYY-MM-DD: ... -->
+- 2026-06-27: Filmstrip now shows thumbnails for recovered rows (carved / disk-image-live /
+  deleted). `RecoveredImageBytes.TryGet` (App/Viewing) centralises byte resolution;
+  `ShellViewModel` decodes 60px thumbnails off-thread after a disk-image open and sets
+  `MediaEntityRow.FilmstripThumbnail` (object, keeps Core WPF-free); the filmstrip
+  `FilmstripImageConverter` is now a MultiBinding (row + thumbnail) so it refreshes. File
+  rows unchanged. WPF — not runtime-verified on WSL.
 - 2026-06-27: Deleted exFAT files now viewable (best-effort) via a from-scratch `ExFatScanner`
   (DiscUtils has no exFAT support) — parses entry-sets (File/Stream/Name, InUse bit for
   deleted) + contiguous recovery; `DiskImagePartitionReader.{TryReadExFat,ReadDeletedExFatFileBytes}`;
